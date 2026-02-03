@@ -27,8 +27,16 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev --prefer-offline --no-audit
 
+# Install tsx for runtime bootstrap scripts
+RUN npm install --no-save tsx
+
 # Copy prisma
 COPY prisma ./prisma
+
+# Copy runtime scripts and shared libraries (for bootstrap/ingest)
+COPY scripts ./scripts
+COPY lib ./lib
+COPY tsconfig.json ./
 
 # Copy built application from builder
 COPY --from=builder /app/.next ./.next
