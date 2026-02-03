@@ -44,3 +44,6 @@ EXPOSE 3000
 # Health check - simple check without making HTTP calls
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD test -d /app/.next && echo "ok" || exit 1
+
+# Start the Next.js server
+CMD ["npm", "run", "start"]
