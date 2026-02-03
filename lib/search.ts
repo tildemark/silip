@@ -100,8 +100,8 @@ export async function searchLegalDocuments(
       const snippet = extractSnippet(section.content, expandedQuery, 300)
       const highlightedContent = highlightSearchTerms(snippet, expandedQuery)
 
-      // Count how many search terms match in this section
-      const matchedTermCount = countMatchedTerms(section, searchTerms)
+      // Calculate relevance score
+      const score = calculateRelevanceScore(section, searchTerms)
 
       return {
         id: section.id,
@@ -116,14 +116,20 @@ export async function searchLegalDocuments(
         snippet,
         tags: section.tags,
         url: section.document.url,
-        matchedTermCount, // For sorting
-      } as SearchResult & { matchedTermCount: number }
+        matchedTermCount: score.matchCount,
+        totalOccurrences: score.totalOccurrences,
+      } as SearchResult & { matchedTermCount: number; totalOccurrences: number }
     })
-    // Sort by: 1) matched term count (descending), 2) document type priority, 3) title
+    // Sort by: 1) matched term count (descending), 2) total occurrences, 3) document type, 4) title
     .sort((a, b) => {
       // First sort by number of matched terms (more matches = higher priority)
       if (b.matchedTermCount !== a.matchedTermCount) {
         return b.matchedTermCount - a.matchedTermCount
+      }
+      
+      // If tied, sort by total occurrences (frequency)
+      if (b.totalOccurrences !== a.totalOccurrences) {
+        return b.totalOccurrences - a.totalOccurrences
       }
       
       // Then by document type (DPA=0, IRR=1, ISSUANCE=2)
@@ -137,8 +143,8 @@ export async function searchLegalDocuments(
       // Finally by title
       return a.sectionTitle.localeCompare(b.sectionTitle)
     })
-    // Remove the temporary matchedTermCount property before returning
-    .map(({ matchedTermCount, ...result }) => result)
+    // Remove the temporary properties before returning
+    .map(({ matchedTermCount, totalOccurrences, ...result }) => result)
 
   const response: SearchResponse = {
     results,
@@ -206,27 +212,32 @@ function buildWhereClause(query: string, filter: SearchFilter): Prisma.SectionWh
 }
 
 /**
- * Count how many search terms match in a section (title or content)
+ * Calculate relevance score based on term matches and frequency
+ * Returns { matchCount, totalOccurrences } for sorting
  */
-function countMatchedTerms(section: any, searchTerms: string[]): number {
+function calculateRelevanceScore(section: any, searchTerms: string[]): { matchCount: number; totalOccurrences: number } {
   let matchCount = 0
+  let totalOccurrences = 0
   const contentLower = section.content.toLowerCase()
   const titleLower = section.title.toLowerCase()
-  const matches: string[] = []
   
   for (const term of searchTerms) {
     const termLower = term.toLowerCase()
+    
+    // Check if term appears at all
     if (contentLower.includes(termLower) || titleLower.includes(termLower)) {
       matchCount++
-      matches.push(term)
+      
+      // Count total occurrences (more occurrences = more relevant)
+      const contentMatches = (contentLower.match(new RegExp(termLower, 'g')) || []).length
+      const titleMatches = (titleLower.match(new RegExp(termLower, 'g')) || []).length
+      
+      // Title matches are worth more than content matches
+      totalOccurrences += titleMatches * 3 + contentMatches
     }
   }
   
-  if (matchCount > 0 && matchCount === searchTerms.length) {
-    console.log(`[MATCH-ALL] Section ${section.sectionNum}: matched all ${matchCount} terms: ${matches.join(', ')}`)
-  }
-  
-  return matchCount
+  return { matchCount, totalOccurrences }
 }
 
 /**
@@ -503,8 +514,8 @@ export async function hybridSearch(
       const snippet = extractSnippet(section.content, expandedQuery, 300)
       const highlightedContent = highlightSearchTerms(snippet, expandedQuery)
 
-      // Count how many search terms match in this section
-      const matchedTermCount = countMatchedTerms(section, searchTerms)
+      // Calculate relevance score based on matched terms and frequency
+      const score = calculateRelevanceScore(section, searchTerms)
 
       return {
         id: section.id,
@@ -519,15 +530,22 @@ export async function hybridSearch(
         snippet,
         tags: section.tags,
         url: section.document.url,
-        matchedTermCount, // For sorting
+        matchedTermCount: score.matchCount,
+        totalOccurrences: score.totalOccurrences,
       } as any
     })
-    // Sort by: 1) matched term count (descending), 2) document type, 3) title
+    // Sort by: 1) matched term count (descending), 2) total occurrences, 3) document type, 4) title
     .sort((a, b) => {
       // First sort by number of matched terms (more matches = higher priority)
       const termDiff = (b.matchedTermCount || 0) - (a.matchedTermCount || 0)
       if (termDiff !== 0) {
         return termDiff
+      }
+      
+      // If same number of terms matched, sort by total occurrences (frequency)
+      const occurrenceDiff = (b.totalOccurrences || 0) - (a.totalOccurrences || 0)
+      if (occurrenceDiff !== 0) {
+        return occurrenceDiff
       }
       
       // Then by document type priority: DPA and IRR first, then others
@@ -541,8 +559,8 @@ export async function hybridSearch(
       // Finally by title
       return a.sectionTitle.localeCompare(b.sectionTitle)
     })
-    // Remove the temporary matchedTermCount property before returning
-    .map(({ matchedTermCount, ...result }) => result)
+    // Remove the temporary properties before returning
+    .map(({ matchedTermCount, totalOccurrences, ...result }) => result)
     .slice(0, limit)
 
   return sortedResults
