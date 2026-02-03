@@ -50,19 +50,87 @@ git pull origin main
 docker-compose up -d --build
 ```
 
-### 5. Database Initialization
+### 3. Production Deployment Checklist
 
-After containers start, run the bootstrap script to initialize the database and ingest data:
+- [ ] Clone SILIP repository: `git clone https://github.com/tildemark/silip.git`
+- [ ] Copy `.env.production` with secure `DB_PASSWORD`
+- [ ] Create `docker-compose.yml` or upload via Portainer
+- [ ] Ensure external network exists: `docker network create net-external`
+- [ ] Deploy stack: `docker-compose up -d --build`
+- [ ] Wait for all containers to be healthy (30-60 seconds)
+- [ ] Verify app responds: `curl http://localhost:13000/api/health`
+- [ ] Copy PDF files to host data directory if needed
+- [ ] Run database bootstrap or individual ingest commands
+- [ ] Test search functionality at https://silip.sanchez.ph
+- [ ] Configure nginx-manager npm reverse proxy if not already done
+
+### 4. Database Initialization & Data Ingestion
+
+The database schema and 35 privacy tags are automatically initialized when the container starts. To ingest legal documents:
+
+**Option A: Full Bootstrap (All Documents)**
+```bash
+docker-compose exec silip-app npm run bootstrap
+```
+Takes ~5-10 minutes, ingests all documents (DPA, IRR, Advisories, Circulars, Decisions, Orders, Resolutions).
+
+**Option B: Individual Ingestion (One-by-One)**
+
+If you prefer to ingest documents one at a time or selectively:
 
 ```bash
-# Full bootstrap (seeding + ingestion) - takes ~5 minutes
-docker-compose exec silip-app npm run bootstrap
+# First, ensure PDF files are in the host data directory
+# Find the host path mounted to /app/data:
+DATA_DIR=$(docker inspect -f '{{ range .Mounts }}{{ if eq .Destination "/app/data" }}{{ .Source }}{{ end }}{{ end }}' silip-app)
+echo "Host data dir: $DATA_DIR"
 
-# OR minimal bootstrap (seeding only) - takes ~30 seconds
-docker-compose exec silip-app npm run bootstrap -- --skip-ingest
+# Copy PDF files to the host mount:
+sudo cp ./DPA-2012.pdf "$DATA_DIR/dpa-2012.pdf"
+sudo cp ./IRR-2016.pdf "$DATA_DIR/irr-2016.pdf"
 
-# Later, ingest documents:
+# Copy supporting documents recursively:
+sudo cp -r ./data/issuances "$DATA_DIR/"
+
+# Then run individual ingest commands:
+docker exec -it silip-app npm run ingest:dpa-pdf
+docker exec -it silip-app npm run ingest:irr-pdf
+docker exec -it silip-app npm run ingest:advisories
+docker exec -it silip-app npm run ingest:circulars
+docker exec -it silip-app npm run ingest:decisions
+docker exec -it silip-app npm run ingest:orders
+docker exec -it silip-app npm run ingest:resolutions
+```
+
+**Note:** PDF files (DPA-2012.pdf, IRR-2016.pdf) must be present in the data folder for PDF-based ingestion.
+
+**Option C: Minimal Bootstrap (Skip Ingestion)**
+```bash
+# Skip bootstrap on startup to deploy faster, ingest later
+SKIP_BOOTSTRAP=true docker-compose exec silip-app npm run bootstrap
+
+# Later, when ready:
 docker-compose exec silip-app npm run bootstrap
+```
+
+## Verification
+
+### Check App Health
+```bash
+# Local (from host)
+curl http://localhost:13000/api/health
+
+# Or via browser
+curl https://silip.sanchez.ph/api/health
+```
+
+### View Logs
+```bash
+docker-compose logs -f silip-app
+```
+
+### Verify Database
+```bash
+docker-compose exec silip-db psql -U silip silip_db -c "SELECT COUNT(*) as section_count FROM \"Section\";"
 ```
 
 **Fast Startup Option:**

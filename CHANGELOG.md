@@ -5,6 +5,36 @@ All notable changes to SILIP (Searchable Interface for Legal Information & Priva
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-02-03
+
+### Fixed
+- **Docker build and deployment issues**
+  - Fixed missing `swagger-ui-react` package installation
+  - Added CSS import handling for Swagger UI in client components
+  - Fixed dynamic route parameters for Next.js 16+ (params as Promise)
+  
+- **Prisma binary target compatibility**
+  - Added `linux-musl-openssl-3.0.x` and `linux-musl-arm64-openssl-3.0.x` binary targets
+  - Fixes Prisma client initialization errors in Alpine Linux containers
+  - Enables support for both x86 and ARM64 deployments
+  
+- **Database initialization**
+  - Automatic schema deployment on container startup
+  - Background database initialization (non-blocking app startup)
+  - Improved database readiness checking
+  
+- **504 Gateway Timeout issues**
+  - Optimized Docker startup sequence for faster response times
+  - App now responds within seconds instead of waiting for full initialization
+
+### Improved
+- **Health check endpoint** - Changed to actual HTTP health check with 60s grace period
+- **Startup performance** - Reduced initial response time significantly
+
+### Added
+- Docker startup script (`scripts/docker-start.sh`) for database initialization
+- OpenSSL and PostgreSQL client tools to Docker image
+
 ## [1.0.0] - 2026-02-03
 
 ### Added
