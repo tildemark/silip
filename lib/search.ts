@@ -135,6 +135,7 @@ function buildWhereClause(query: string, filter: SearchFilter): Prisma.SectionWh
   const searchTerms = query.split(/\s+/).filter((term) => term.length > 0)
 
   // Build search conditions - search only in content and title
+  // Use OR logic so ANY term matching returns results (better for multi-word queries)
   const searchConditions: Prisma.SectionWhereInput[] = searchTerms.map((term) => ({
     OR: [
       {
@@ -153,8 +154,9 @@ function buildWhereClause(query: string, filter: SearchFilter): Prisma.SectionWh
   }))
 
   // Base where clause with search conditions
+  // Changed from AND to OR to allow matching ANY search term (e.g., "data protection officer" matches sections with any of these words)
   const whereClause: Prisma.SectionWhereInput = {
-    AND: searchConditions,
+    OR: searchConditions,
   }
 
   // Add document type or subtype filter
