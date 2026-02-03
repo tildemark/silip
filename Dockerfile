@@ -32,7 +32,8 @@ COPY prisma ./prisma
 
 # Copy built application from builder
 COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
+# Create public directory (Next.js may not generate if empty)
+RUN mkdir -p ./public
 
 # Create data directory for PDFs
 RUN mkdir -p ./data
