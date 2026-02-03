@@ -67,7 +67,7 @@ services:
       - "13000:3000"
     volumes:
       - ./data:/app/data
-      - silip-logs:/app/.next
+      - silip-logs:/app/.next/cache
     networks:
       - net
       - silip-internal
