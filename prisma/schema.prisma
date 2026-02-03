@@ -1,0 +1,64 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Legal documents (DPA, IRR, Circulars, etc.)
+model LegalDocument {
+  id          String    @id @default(cuid())
+  type        DocType   // DPA, IRR, ISSUANCE
+  title       String    // "Data Privacy Act of 2012"
+  alias       String    // "DPA 2012" or "NPC Circular 16-01"
+  url         String?   // Source URL
+  sections    Section[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([type])
+  @@index([alias])
+}
+
+// Individual sections/articles from each document
+model Section {
+  id          String         @id @default(cuid())
+  documentId  String
+  document    LegalDocument  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  
+  sectionNum  String         // "Section 13", "Article IV", etc.
+  title       String         // "Sensitive Personal Information"
+  content     String         @db.Text // Full text content
+  
+  tags        Tag[]          @relation("SectionToTag")
+  
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([documentId])
+  @@index([sectionNum])
+}
+
+// Tagging system for keyword mapping
+model Tag {
+  id          String    @id @default(cuid())
+  name        String    @unique // "CCTV", "Consent", "Breach", etc.
+  description String?   // Optional description
+  sections    Section[] @relation("SectionToTag")
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([name])
+}
+
+enum DocType {
+  DPA       // Data Privacy Act of 2012
+  IRR       // Implementing Rules and Regulations
+  ISSUANCE  // Circulars, Advisories, Opinions
+}
