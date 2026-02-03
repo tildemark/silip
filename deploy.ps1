@@ -25,14 +25,14 @@ if errorlevel 1 (
 )
 echo ✓ Docker Compose is installed
 
-REM Check if net-external network exists
-docker network ls | find "net-external" >nul
+REM Check if net external network exists
+docker network ls | find " net " >nul
 if errorlevel 1 (
-    echo ⚠ Creating external network 'net-external'
-    docker network create net-external
+    echo ⚠ Creating external network 'net'
+    docker network create net
     echo ✓ Network created
 ) else (
-    echo ✓ External network 'net-external' exists
+    echo ✓ External network 'net' exists
 )
 
 REM Create .env.production if it doesn't exist
@@ -77,11 +77,16 @@ exit /b 1
 
 :db_ready
 
-REM Run bootstrap
-echo.
-echo Running database bootstrap...
-docker-compose exec -T silip-app npm run bootstrap
-echo ✓ Bootstrap complete
+REM Run bootstrap unless explicitly skipped
+if /I "%SKIP_BOOTSTRAP%"=="true" (
+    echo ⚠ Skipping bootstrap (SKIP_BOOTSTRAP=true)
+    echo Run later: docker-compose exec silip-app npm run bootstrap
+) else (
+    echo.
+    echo Running database bootstrap...
+    docker-compose exec -T silip-app npm run bootstrap
+    echo ✓ Bootstrap complete
+)
 
 REM Show status
 echo.

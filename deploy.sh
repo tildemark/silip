@@ -42,12 +42,12 @@ if ! command -v docker-compose &> /dev/null; then
 fi
 print_status "Docker Compose is installed"
 
-# Check if net-external network exists
-if docker network ls | grep -q net-external; then
-    print_status "External network 'net-external' exists"
+# Check if net external network exists
+if docker network ls | grep -q "\bnet\b"; then
+    print_status "External network 'net' exists"
 else
-    print_warning "Creating external network 'net-external'"
-    docker network create net-external
+    print_warning "Creating external network 'net'"
+    docker network create net
     print_status "Network created"
 fi
 
@@ -89,10 +89,15 @@ for i in {1..30}; do
     fi
 done
 
-# Run bootstrap
-echo -e "\n${YELLOW}Running database bootstrap...${NC}"
-docker-compose exec -T silip-app npm run bootstrap
-print_status "Bootstrap complete"
+# Run bootstrap unless explicitly skipped
+if [ "${SKIP_BOOTSTRAP}" = "true" ]; then
+    print_warning "Skipping bootstrap (SKIP_BOOTSTRAP=true)"
+    echo "Run later: docker-compose exec silip-app npm run bootstrap"
+else
+    echo -e "\n${YELLOW}Running database bootstrap...${NC}"
+    docker-compose exec -T silip-app npm run bootstrap
+    print_status "Bootstrap complete"
+fi
 
 # Show status
 echo -e "\n${GREEN}Deployment complete!${NC}"
