@@ -33,6 +33,9 @@ RUN npm install --no-save tsx
 # Copy prisma
 COPY prisma ./prisma
 
+# Copy generated Prisma client from builder
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+
 # Copy runtime scripts and shared libraries (for bootstrap/ingest)
 COPY scripts ./scripts
 COPY lib ./lib
