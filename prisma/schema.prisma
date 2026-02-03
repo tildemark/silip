@@ -4,11 +4,13 @@
 generator client {
   provider      = "prisma-client-js"
   binaryTargets = ["native", "linux-musl-openssl-3.0.x", "linux-musl-arm64-openssl-3.0.x"]
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  extensions = [vector]
 }
 
 // Legal documents (DPA, IRR, Circulars, etc.)
@@ -36,6 +38,9 @@ model Section {
   sectionNum  String         // "Section 13", "Article IV", etc.
   title       String         // "Sensitive Personal Information"
   content     String         @db.Text // Full text content
+  
+  // Vector embedding for semantic search (768-dimensional from Gemini text-embedding-004)
+  embedding   Unsupported("vector(768)")?
   
   tags        Tag[]          @relation("SectionToTag")
   

@@ -22,7 +22,8 @@
     "ingest:resolutions": "tsx scripts/ingest-resolutions.ts",
     "db:setup": "tsx scripts/setup-database.ts",
     "db:fresh": "prisma db push --force-reset && npm run tags:seed && npm run ingest:sample",
-    "bootstrap": "npx tsx scripts/bootstrap.ts"
+    "bootstrap": "npx tsx scripts/bootstrap.ts",
+    "search:reindex": "tsx scripts/reindex.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.8.0",
@@ -31,6 +32,7 @@
     "@radix-ui/react-separator": "^1.0.3",
     "@radix-ui/react-slot": "^1.0.2",
     "@radix-ui/react-tabs": "^1.0.4",
+    "@google/generative-ai": "^0.3.0",
     "cheerio": "^1.0.0-rc.12",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
