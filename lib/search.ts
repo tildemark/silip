@@ -497,7 +497,7 @@ export async function hybridSearch(
   // Convert to SearchResult format
   const searchTerms = normalizedQuery.split(/\s+/).filter((term) => term.length > 0)
   
-  const mergedResults = Array.from(mergedMap.values())
+  const sortedResults = Array.from(mergedMap.values())
     .map((section) => {
       const expandedQuery = getExpandedQueryTerms(query)
       const snippet = extractSnippet(section.content, expandedQuery, 300)
@@ -527,7 +527,6 @@ export async function hybridSearch(
       // First sort by number of matched terms (more matches = higher priority)
       const termDiff = (b.matchedTermCount || 0) - (a.matchedTermCount || 0)
       if (termDiff !== 0) {
-        console.log(`[RANKING] "${a.sectionTitle.substring(0, 50)}" (${a.matchedTermCount} terms) vs "${b.sectionTitle.substring(0, 50)}" (${b.matchedTermCount} terms) => ${termDiff > 0 ? 'b wins' : 'a wins'}`)
         return termDiff
       }
       
@@ -536,7 +535,6 @@ export async function hybridSearch(
       const priorityA = priorityMap[a.documentType] ?? 3
       const priorityB = priorityMap[b.documentType] ?? 3
       if (priorityA !== priorityB) {
-        console.log(`[RANKING] Type: ${a.documentType}(${priorityA}) vs ${b.documentType}(${priorityB})`)
         return priorityA - priorityB
       }
       
@@ -547,7 +545,7 @@ export async function hybridSearch(
     .map(({ matchedTermCount, ...result }) => result)
     .slice(0, limit)
 
-  return mergedResults
+  return sortedResults
 }
 
 /**
