@@ -1,39 +1,89 @@
-version: '3.8'
+version: '3.9'
 
 services:
-  postgres:
+  silip-db:
     image: postgres:16-alpine
-    container_name: silip_postgres
+    container_name: silip-db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: silip_user
-      POSTGRES_PASSWORD: silip_password
-      POSTGRES_DB: silip_db
+      POSTGRES_USER: ${DB_USER:-silip}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-silip_password}
+      POSTGRES_DB: ${DB_NAME:-silip_db}
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - silip-postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U silip_user"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-silip}"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - net-external
+      - silip-internal
+    restart: unless-stopped
 
-  redis:
+  silip-redis:
     image: redis:7-alpine
-    container_name: silip_redis
+    container_name: silip-redis
     restart: unless-stopped
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
+      - silip-redis-data:/data
     command: redis-server --appendonly yes
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - silip-internal
+    restart: unless-stopped
+
+  silip-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: silip-app
+    restart: unless-stopped
+    depends_on:
+      silip-db:
+        condition: service_healthy
+      silip-redis:
+        condition: service_healthy
+    environment:
+      # Database
+      DATABASE_URL: postgresql://${DB_USER:-silip}:${DB_PASSWORD:-silip_password}@silip-db:5432/${DB_NAME:-silip_db}
+      
+      # Redis
+      REDIS_URL: redis://silip-redis:6379
+      
+      # Next.js
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: https://silip.sanchez.ph/api
+      NEXT_PUBLIC_BASE_URL: https://silip.sanchez.ph
+      
+      # Application
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+      - silip-logs:/app/.next
+    networks:
+      - net-external
+      - silip-internal
+    restart: unless-stopped
 
 volumes:
-  postgres_data:
-  redis_data:
+  silip-postgres-data:
+  silip-redis-data:
+  silip-logs:
+
+networks:
+  net-external:
+    external: true
+  silip-internal:
+    driver: bridge
