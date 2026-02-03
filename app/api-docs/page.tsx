@@ -1,14 +1,13 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import 'swagger-ui-react/swagger-ui.css'
+import React from 'react'
 
-const SwaggerUI = dynamic(() => import('swagger-ui-react'), { ssr: false })
+const SwaggerUIComponent = dynamic(
+  () => import('./swagger-client'),
+  { ssr: false, loading: () => <div className="min-h-screen bg-white flex items-center justify-center">Loading API documentation...</div> }
+)
 
 export default function ApiDocsPage() {
-  return (
-    <div className="min-h-screen bg-white">
-      <SwaggerUI url="/api/swagger" />
-    </div>
-  )
+  return <SwaggerUIComponent />
 }
