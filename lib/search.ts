@@ -212,12 +212,18 @@ function countMatchedTerms(section: any, searchTerms: string[]): number {
   let matchCount = 0
   const contentLower = section.content.toLowerCase()
   const titleLower = section.title.toLowerCase()
+  const matches: string[] = []
   
   for (const term of searchTerms) {
     const termLower = term.toLowerCase()
     if (contentLower.includes(termLower) || titleLower.includes(termLower)) {
       matchCount++
+      matches.push(term)
     }
+  }
+  
+  if (matchCount > 0 && matchCount === searchTerms.length) {
+    console.log(`[MATCH-ALL] Section ${section.sectionNum}: matched all ${matchCount} terms: ${matches.join(', ')}`)
   }
   
   return matchCount
@@ -519,8 +525,10 @@ export async function hybridSearch(
     // Sort by: 1) matched term count (descending), 2) document type, 3) title
     .sort((a, b) => {
       // First sort by number of matched terms (more matches = higher priority)
-      if (b.matchedTermCount !== a.matchedTermCount) {
-        return b.matchedTermCount - a.matchedTermCount
+      const termDiff = (b.matchedTermCount || 0) - (a.matchedTermCount || 0)
+      if (termDiff !== 0) {
+        console.log(`[RANKING] "${a.sectionTitle.substring(0, 50)}" (${a.matchedTermCount} terms) vs "${b.sectionTitle.substring(0, 50)}" (${b.matchedTermCount} terms) => ${termDiff > 0 ? 'b wins' : 'a wins'}`)
+        return termDiff
       }
       
       // Then by document type priority: DPA and IRR first, then others
@@ -528,6 +536,7 @@ export async function hybridSearch(
       const priorityA = priorityMap[a.documentType] ?? 3
       const priorityB = priorityMap[b.documentType] ?? 3
       if (priorityA !== priorityB) {
+        console.log(`[RANKING] Type: ${a.documentType}(${priorityA}) vs ${b.documentType}(${priorityB})`)
         return priorityA - priorityB
       }
       
