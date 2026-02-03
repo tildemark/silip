@@ -441,9 +441,8 @@ export async function hybridSearch(
     }
   })
 
-  // Convert to SearchResult format and limit
+  // Convert to SearchResult format
   const mergedResults = Array.from(mergedMap.values())
-    .slice(0, limit)
     .map((section) => {
       const expandedQuery = getExpandedQueryTerms(query)
       const snippet = extractSnippet(section.content, expandedQuery, 300)
@@ -464,6 +463,14 @@ export async function hybridSearch(
         url: section.document.url,
       }
     })
+    // Sort by document type priority: DPA and IRR first, then others
+    .sort((a, b) => {
+      const priorityMap: Record<string, number> = { 'DPA': 0, 'IRR': 1, 'ISSUANCE': 2 }
+      const priorityA = priorityMap[a.documentType] ?? 3
+      const priorityB = priorityMap[b.documentType] ?? 3
+      return priorityA - priorityB
+    })
+    .slice(0, limit)
 
   return mergedResults
 }

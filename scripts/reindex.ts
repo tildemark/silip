@@ -52,13 +52,12 @@ async function reindex() {
 
           const embedding = await generateEmbedding(textToEmbed)
 
-          // Update section with embedding
-          await prisma.section.update({
-            where: { id: section.id },
-              data: {
-                embedding,
-              } as any,
-          })
+          // Update section with embedding using raw SQL (Prisma doesn't support Unsupported types)
+          await prisma.$executeRaw`
+            UPDATE "Section"
+            SET embedding = ${JSON.stringify(embedding)}::vector
+            WHERE id = ${section.id}
+          `
 
           processed++
 

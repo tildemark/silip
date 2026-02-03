@@ -2,7 +2,7 @@ version: '3.9'
 
 services:
   silip-db:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: silip-db
     restart: unless-stopped
     environment:
@@ -11,6 +11,8 @@ services:
       POSTGRES_DB: ${DB_NAME:-silip_db}
     volumes:
       - silip-postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-silip}"]
       interval: 10s
