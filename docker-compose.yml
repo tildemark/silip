@@ -9,8 +9,6 @@ services:
       POSTGRES_USER: ${DB_USER:-silip}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-silip_password}
       POSTGRES_DB: ${DB_NAME:-silip_db}
-    ports:
-      - "5432:5432"
     volumes:
       - silip-postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -26,8 +24,6 @@ services:
     image: redis:7-alpine
     container_name: silip-redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
     volumes:
       - silip-redis-data:/data
     command: redis-server --appendonly yes
