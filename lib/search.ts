@@ -90,28 +90,55 @@ export async function searchLegalDocuments(
   })
 
   // Transform results with highlighting
-  const results: SearchResult[] = sections.map((section) => {
-    // Get expanded query terms including keyword variations
-    const expandedQuery = getExpandedQueryTerms(query)
-    
-    const snippet = extractSnippet(section.content, expandedQuery, 300)
-    const highlightedContent = highlightSearchTerms(snippet, expandedQuery)
+  const searchTerms = normalizedQuery.split(/\s+/).filter((term) => term.length > 0)
+  
+  const results: SearchResult[] = sections
+    .map((section) => {
+      // Get expanded query terms including keyword variations
+      const expandedQuery = getExpandedQueryTerms(query)
+      
+      const snippet = extractSnippet(section.content, expandedQuery, 300)
+      const highlightedContent = highlightSearchTerms(snippet, expandedQuery)
 
-    return {
-      id: section.id,
-      documentId: section.document.id,
-      documentType: section.document.type,
-      documentAlias: section.document.alias,
-      documentTitle: section.document.title,
-      sectionNum: section.sectionNum,
-      sectionTitle: section.title,
-      content: section.content,
-      highlightedContent,
-      snippet,
-      tags: section.tags,
-      url: section.document.url,
-    }
-  })
+      // Count how many search terms match in this section
+      const matchedTermCount = countMatchedTerms(section, searchTerms)
+
+      return {
+        id: section.id,
+        documentId: section.document.id,
+        documentType: section.document.type,
+        documentAlias: section.document.alias,
+        documentTitle: section.document.title,
+        sectionNum: section.sectionNum,
+        sectionTitle: section.title,
+        content: section.content,
+        highlightedContent,
+        snippet,
+        tags: section.tags,
+        url: section.document.url,
+        matchedTermCount, // For sorting
+      } as SearchResult & { matchedTermCount: number }
+    })
+    // Sort by: 1) matched term count (descending), 2) document type priority, 3) title
+    .sort((a, b) => {
+      // First sort by number of matched terms (more matches = higher priority)
+      if (b.matchedTermCount !== a.matchedTermCount) {
+        return b.matchedTermCount - a.matchedTermCount
+      }
+      
+      // Then by document type (DPA=0, IRR=1, ISSUANCE=2)
+      const typeOrder: Record<DocType, number> = { DPA: 0, IRR: 1, ISSUANCE: 2 }
+      const aTypeOrder = typeOrder[a.documentType] ?? 999
+      const bTypeOrder = typeOrder[b.documentType] ?? 999
+      if (aTypeOrder !== bTypeOrder) {
+        return aTypeOrder - bTypeOrder
+      }
+      
+      // Finally by title
+      return a.sectionTitle.localeCompare(b.sectionTitle)
+    })
+    // Remove the temporary matchedTermCount property before returning
+    .map(({ matchedTermCount, ...result }) => result)
 
   const response: SearchResponse = {
     results,
@@ -176,6 +203,24 @@ function buildWhereClause(query: string, filter: SearchFilter): Prisma.SectionWh
   }
 
   return whereClause
+}
+
+/**
+ * Count how many search terms match in a section (title or content)
+ */
+function countMatchedTerms(section: any, searchTerms: string[]): number {
+  let matchCount = 0
+  const contentLower = section.content.toLowerCase()
+  const titleLower = section.title.toLowerCase()
+  
+  for (const term of searchTerms) {
+    const termLower = term.toLowerCase()
+    if (contentLower.includes(termLower) || titleLower.includes(termLower)) {
+      matchCount++
+    }
+  }
+  
+  return matchCount
 }
 
 /**
@@ -444,11 +489,16 @@ export async function hybridSearch(
   })
 
   // Convert to SearchResult format
+  const searchTerms = normalizedQuery.split(/\s+/).filter((term) => term.length > 0)
+  
   const mergedResults = Array.from(mergedMap.values())
     .map((section) => {
       const expandedQuery = getExpandedQueryTerms(query)
       const snippet = extractSnippet(section.content, expandedQuery, 300)
       const highlightedContent = highlightSearchTerms(snippet, expandedQuery)
+
+      // Count how many search terms match in this section
+      const matchedTermCount = countMatchedTerms(section, searchTerms)
 
       return {
         id: section.id,
@@ -463,15 +513,29 @@ export async function hybridSearch(
         snippet,
         tags: section.tags,
         url: section.document.url,
-      }
+        matchedTermCount, // For sorting
+      } as any
     })
-    // Sort by document type priority: DPA and IRR first, then others
+    // Sort by: 1) matched term count (descending), 2) document type, 3) title
     .sort((a, b) => {
+      // First sort by number of matched terms (more matches = higher priority)
+      if (b.matchedTermCount !== a.matchedTermCount) {
+        return b.matchedTermCount - a.matchedTermCount
+      }
+      
+      // Then by document type priority: DPA and IRR first, then others
       const priorityMap: Record<string, number> = { 'DPA': 0, 'IRR': 1, 'ISSUANCE': 2 }
       const priorityA = priorityMap[a.documentType] ?? 3
       const priorityB = priorityMap[b.documentType] ?? 3
-      return priorityA - priorityB
+      if (priorityA !== priorityB) {
+        return priorityA - priorityB
+      }
+      
+      // Finally by title
+      return a.sectionTitle.localeCompare(b.sectionTitle)
     })
+    // Remove the temporary matchedTermCount property before returning
+    .map(({ matchedTermCount, ...result }) => result)
     .slice(0, limit)
 
   return mergedResults
