@@ -5,11 +5,7 @@
  * - Legal consultant responses
  */
 
-import {
-  GoogleGenerativeAI,
-  EmbedContent,
-  Content,
-} from '@google/generative-ai'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
 interface SectionSnippet {
   id: string

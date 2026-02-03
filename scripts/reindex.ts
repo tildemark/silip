@@ -55,9 +55,9 @@ async function reindex() {
           // Update section with embedding
           await prisma.section.update({
             where: { id: section.id },
-            data: {
-              embedding: embedding,
-            },
+              data: {
+                embedding,
+              } as any,
           })
 
           processed++

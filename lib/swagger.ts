@@ -4,8 +4,8 @@ export const openApiSpec: OpenAPIV3.Document = {
   openapi: '3.0.0',
   info: {
     title: 'SILIP API',
-    version: '1.0.0',
-    description: 'Searchable Interface for Legal Information & Privacy - API for Philippine Data Privacy Law',
+    version: '2.0.0',
+    description: 'Searchable Interface for Legal Information & Privacy - API for Philippine Data Privacy Law with AI-powered semantic search',
     contact: {
       name: 'SILIP',
     },
@@ -20,6 +20,10 @@ export const openApiSpec: OpenAPIV3.Document = {
     {
       name: 'Search',
       description: 'Search legal documents and sections',
+    },
+    {
+      name: 'Consultant',
+      description: 'AI-powered legal consultant with source citations',
     },
     {
       name: 'Resources',
@@ -102,6 +106,208 @@ export const openApiSpec: OpenAPIV3.Document = {
           },
           '500': {
             description: 'Internal server error',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/Error',
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/search/v2': {
+      get: {
+        tags: ['Search'],
+        summary: 'Hybrid search with AI re-ranking (v2.0)',
+        description:
+          'Combines keyword and vector search with AI-powered re-ranking to prevent semantic drift. Supports filtering by document type.',
+        parameters: [
+          {
+            name: 'q',
+            in: 'query',
+            required: true,
+            description: 'Search query',
+            schema: {
+              type: 'string',
+              example: 'data privacy requirements',
+            },
+          },
+          {
+            name: 'filter',
+            in: 'query',
+            description: 'Document type filter',
+            schema: {
+              type: 'string',
+              enum: ['ALL', 'DPA', 'IRR', 'ISSUANCE', 'CIRCULAR', 'ADVISORY', 'ORDER', 'DECISION', 'RESOLUTION'],
+              default: 'ALL',
+            },
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            description: 'Maximum number of results to return (max 100)',
+            schema: {
+              type: 'integer',
+              default: 20,
+            },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Search results with re-ranking applied',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    results: {
+                      type: 'array',
+                      items: {
+                        allOf: [
+                          {
+                            $ref: '#/components/schemas/SearchResult',
+                          },
+                          {
+                            type: 'object',
+                            properties: {
+                              score: {
+                                type: 'number',
+                                description: 'Re-ranking score (0-10) if re-ranked',
+                              },
+                            },
+                          },
+                        ],
+                      },
+                    },
+                    count: {
+                      type: 'number',
+                    },
+                    query: {
+                      type: 'string',
+                    },
+                    filter: {
+                      type: 'string',
+                    },
+                    reranked: {
+                      type: 'boolean',
+                    },
+                    message: {
+                      type: 'string',
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '400': {
+            description: 'Bad request - missing or invalid parameters',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/Error',
+                },
+              },
+            },
+          },
+          '500': {
+            description: 'Server error',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/Error',
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/consult': {
+      post: {
+        tags: ['Consultant'],
+        summary: 'AI legal consultant with source citations',
+        description:
+          'Asks an AI legal consultant a question and receives a response with citations to relevant legal documents.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  query: {
+                    type: 'string',
+                    description: 'Legal question or inquiry',
+                    example: 'What are the requirements for data breach notification?',
+                  },
+                },
+                required: ['query'],
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Consultant response with cited sources',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    answer: {
+                      type: 'string',
+                      description: 'The consultant response',
+                    },
+                    sources: {
+                      type: 'array',
+                      items: {
+                        allOf: [
+                          {
+                            $ref: '#/components/schemas/SearchResult',
+                          },
+                          {
+                            type: 'object',
+                            properties: {
+                              citationNum: {
+                                type: 'number',
+                              },
+                            },
+                          },
+                        ],
+                      },
+                    },
+                    query: {
+                      type: 'string',
+                    },
+                    confidence: {
+                      type: 'string',
+                      enum: ['low', 'medium', 'high'],
+                    },
+                    sourceCount: {
+                      type: 'number',
+                    },
+                    message: {
+                      type: 'string',
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '400': {
+            description: 'Bad request - invalid query',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/Error',
+                },
+              },
+            },
+          },
+          '500': {
+            description: 'Server error',
             content: {
               'application/json': {
                 schema: {

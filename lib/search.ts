@@ -310,6 +310,165 @@ function getExpandedQueryTerms(query: string): string {
 }
 
 /**
+ * Hybrid search: combines keyword search with vector search
+ * Returns top candidates before re-ranking
+ */
+export async function hybridSearch(
+  query: string,
+  filter: SearchFilter = 'ALL',
+  limit: number = 20
+): Promise<SearchResult[]> {
+  const normalizedQuery = normalizeQuery(query)
+
+  if (!normalizedQuery) {
+    return []
+  }
+
+  // Build where clause for keyword matching
+  const whereClause = buildWhereClause(normalizedQuery, filter)
+
+  // 1. Keyword search
+  const keywordResults = await prisma.section.findMany({
+    where: whereClause,
+    include: {
+      document: {
+        select: {
+          id: true,
+          type: true,
+          title: true,
+          alias: true,
+          url: true,
+        },
+      },
+      tags: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+    take: 50,
+  })
+
+  // 2. Vector search (if embeddings are available)
+  // Note: This requires raw SQL because Prisma doesn't support pgvector operators yet
+  let vectorResults: typeof keywordResults = []
+  
+  try {
+    const { generateEmbedding } = await import('./ai')
+    const queryEmbedding = await generateEmbedding(query)
+    const embeddingJson = JSON.stringify(queryEmbedding)
+
+    // Use raw SQL for cosine similarity search
+    let rawVectorResults: Array<{
+      id: string
+      documentId: string
+      sectionNum: string
+      title: string
+      content: string
+    }> = []
+
+    if (filter !== 'ALL') {
+      const docTypes = filter === 'DPA' || filter === 'IRR' || filter === 'ISSUANCE' 
+        ? [filter] 
+        : filter === 'CIRCULAR' || filter === 'ADVISORY' || filter === 'ORDER' || filter === 'DECISION' || filter === 'RESOLUTION'
+        ? ['ISSUANCE']
+        : []
+
+      rawVectorResults = await prisma.$queryRaw<typeof rawVectorResults>`
+        SELECT 
+          s.id, s."documentId", s."sectionNum", s.title, s.content
+        FROM "Section" s
+        JOIN "LegalDocument" d ON s."documentId" = d.id
+        WHERE s.embedding IS NOT NULL
+        AND d.type = ANY(${docTypes}::"DocType"[])
+        ORDER BY (s.embedding <-> ${embeddingJson}::vector)
+        LIMIT 50
+      `
+    } else {
+      rawVectorResults = await prisma.$queryRaw<typeof rawVectorResults>`
+        SELECT 
+          id, "documentId", "sectionNum", title, content
+        FROM "Section"
+        WHERE embedding IS NOT NULL
+        ORDER BY (embedding <-> ${embeddingJson}::vector)
+        LIMIT 50
+      `
+    }
+
+    // Fetch full section data for vector results
+    if (rawVectorResults && rawVectorResults.length > 0) {
+      vectorResults = await prisma.section.findMany({
+        where: {
+          id: {
+            in: rawVectorResults.map((r) => r.id),
+          },
+        },
+        include: {
+          document: {
+            select: {
+              id: true,
+              type: true,
+              title: true,
+              alias: true,
+              url: true,
+            },
+          },
+          tags: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      })
+    }
+  } catch (error) {
+    console.warn('Vector search unavailable, using keyword results only:', error)
+    vectorResults = []
+  }
+
+  // 3. Merge results (deduplicate by ID, prefer keyword matches)
+  const mergedMap = new Map<string, (typeof keywordResults)[0]>()
+
+  // Add keyword results first (higher priority)
+  keywordResults.forEach((r) => mergedMap.set(r.id, r))
+
+  // Add vector results that aren't already in keyword results
+  vectorResults.forEach((r) => {
+    if (!mergedMap.has(r.id)) {
+      mergedMap.set(r.id, r)
+    }
+  })
+
+  // Convert to SearchResult format and limit
+  const mergedResults = Array.from(mergedMap.values())
+    .slice(0, limit)
+    .map((section) => {
+      const expandedQuery = getExpandedQueryTerms(query)
+      const snippet = extractSnippet(section.content, expandedQuery, 300)
+      const highlightedContent = highlightSearchTerms(snippet, expandedQuery)
+
+      return {
+        id: section.id,
+        documentId: section.document.id,
+        documentType: section.document.type,
+        documentAlias: section.document.alias,
+        documentTitle: section.document.title,
+        sectionNum: section.sectionNum,
+        sectionTitle: section.title,
+        content: section.content,
+        highlightedContent,
+        snippet,
+        tags: section.tags,
+        url: section.document.url,
+      }
+    })
+
+  return mergedResults
+}
+
+/**
  * Get all available tags
  */
 export async function getAllTags() {
@@ -319,3 +478,4 @@ export async function getAllTags() {
     },
   })
 }
+
