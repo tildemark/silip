@@ -48,8 +48,8 @@ export async function searchLegalDocuments(
     }
   }
 
-  // Generate cache key
-  const cacheKey = `silip:search:${filter}:${normalizedQuery}`
+  // Generate cache key with version to invalidate old caches after ranking changes
+  const cacheKey = `silip:search:v2:${filter}:${normalizedQuery}`
 
   // Check cache first
   const cached = await cacheService.get<SearchResponse>(cacheKey)
