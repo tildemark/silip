@@ -65,6 +65,8 @@ services:
       # Application
       PORT: 3000
       HOSTNAME: 0.0.0.0
+      # Skip bootstrap on startup - run manually when ready
+      SKIP_BOOTSTRAP: ${SKIP_BOOTSTRAP:-false}
     ports:
       - "3000:3000"
     volumes:

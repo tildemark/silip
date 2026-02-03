@@ -50,18 +50,30 @@ git pull origin main
 docker-compose up -d --build
 ```
 
-### 3. Database Initialization
+### 5. Database Initialization
 
-After containers start, run the bootstrap script:
+After containers start, run the bootstrap script to initialize the database and ingest data:
 
 ```bash
+# Full bootstrap (seeding + ingestion) - takes ~5 minutes
+docker-compose exec silip-app npm run bootstrap
+
+# OR minimal bootstrap (seeding only) - takes ~30 seconds
+docker-compose exec silip-app npm run bootstrap -- --skip-ingest
+
+# Later, ingest documents:
 docker-compose exec silip-app npm run bootstrap
 ```
 
-This will:
-- Create database tables (Prisma migrations)
-- Seed 35 privacy concept tags
-- Ingest all 7 document types (475 sections total)
+**Fast Startup Option:**
+Skip bootstrap on deployment, then run it when ready:
+```bash
+# Deploy without ingestion
+SKIP_BOOTSTRAP=true docker-compose up -d
+
+# Later, when ready, ingest documents
+docker-compose exec silip-app npm run bootstrap
+```
 
 ### 4. Configure nginx-manager npm
 
@@ -102,7 +114,29 @@ curl https://silip.sanchez.ph/api/health
 # Verify API docs
 curl https://silip.sanchez.ph/api-docs
 ```
+## ⚡ Fast Deployment (Skip Ingestion)
 
+For faster deployment, skip document ingestion on startup:
+
+```bash
+# Deploy without waiting for ingestion
+SKIP_BOOTSTRAP=true docker-compose up -d
+
+# Services are up immediately, app is ready at http://localhost:3000
+# Search will return no results until you run:
+docker-compose exec silip-app npm run bootstrap
+
+# Or schedule ingestion for later:
+docker-compose exec silip-app npm run bootstrap -- --skip-ingest
+# ... do other things ...
+docker-compose exec silip-app npm run bootstrap
+```
+
+**Benefits:**
+- Deployment time: ~30 seconds instead of 5+ minutes
+- App is ready immediately
+- Ingestion runs in background when you're ready
+- Useful for staging/testing environments
 ### 6. Data Backup
 
 PostgreSQL data is stored in named volume `silip-postgres-data`:
