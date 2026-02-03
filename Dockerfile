@@ -58,9 +58,9 @@ RUN chmod +x ./scripts/docker-start.sh
 # Expose port
 EXPOSE 3000
 
-# Health check - simple check without making HTTP calls
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD test -d /app/.next && echo "ok" || exit 1
+# Health check - give app time to start
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
 
 # Start the Next.js server with database initialization
 CMD ["sh", "./scripts/docker-start.sh"]

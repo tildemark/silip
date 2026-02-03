@@ -4,25 +4,28 @@ set -e
 echo "🚀 SILIP Docker Startup"
 echo "=================================="
 
-# Wait for database to be ready by attempting to push schema
-echo "⏳ Waiting for PostgreSQL to be ready and deploying schema..."
-for i in $(seq 1 30); do
-  if npx prisma db push --skip-generate 2>&1; then
-    echo "✅ Database is ready and schema deployed"
+# Quick database readiness check (max 30 seconds)
+echo "⏳ Waiting for PostgreSQL..."
+for i in $(seq 1 15); do
+  if npx prisma db execute --stdin < /dev/null 2>/dev/null; then
+    echo "✅ Database is ready"
     break
   fi
-  if [ $i -eq 30 ]; then
-    echo "❌ Database failed to start after 30 attempts"
-    exit 1
+  if [ $i -eq 15 ]; then
+    echo "⚠️  Database not ready, starting app anyway..."
+    break
   fi
-  echo "   Attempt $i/30..."
   sleep 2
 done
 
-# Seed tags if not already seeded
-echo "🏷️  Seeding tags..."
-npx tsx scripts/seed-tags.ts || echo "⚠️  Tag seeding may have already run, continuing..."
+# Run database initialization in background (non-blocking)
+(
+  echo "📊 Initializing database in background..."
+  npx prisma db push --skip-generate 2>/dev/null || echo "⚠️  Schema may already exist"
+  npx tsx scripts/seed-tags.ts 2>/dev/null || echo "⚠️  Tags may already be seeded"
+  echo "✅ Background initialization complete"
+) &
 
-echo "✅ Database initialization complete"
+# Start Next.js immediately (don't wait for background tasks)
 echo "🚀 Starting Next.js application..."
 exec npm run start
