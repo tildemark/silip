@@ -1,0 +1,50 @@
+# Node modules
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+.next
+dist
+build
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*.swn
+.DS_Store
+
+# OS
+Thumbs.db
+
+# Dependencies
+.npm
+.cache
+
+# Docker
+Dockerfile
+docker-compose.yml
+.docker
+
+# Tests
+.jest_cache
+coverage
+
+# Logs
+logs
+*.log
+
+# Misc
+.turbo

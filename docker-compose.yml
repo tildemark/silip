@@ -19,9 +19,8 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - net-external
+      - net
       - silip-internal
-    restart: unless-stopped
 
   silip-redis:
     image: redis:7-alpine
@@ -39,7 +38,6 @@ services:
       retries: 5
     networks:
       - silip-internal
-    restart: unless-stopped
 
   silip-app:
     build:
@@ -73,9 +71,8 @@ services:
       - ./data:/app/data
       - silip-logs:/app/.next
     networks:
-      - net-external
+      - net
       - silip-internal
-    restart: unless-stopped
 
 volumes:
   silip-postgres-data:
@@ -83,7 +80,7 @@ volumes:
   silip-logs:
 
 networks:
-  net-external:
+  net:
     external: true
   silip-internal:
     driver: bridge
