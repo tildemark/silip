@@ -23,6 +23,9 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+# Install OpenSSL and PostgreSQL client for database operations
+RUN apk add --no-cache openssl postgresql-client
+
 # Install only production dependencies
 COPY package*.json ./
 RUN npm ci --omit=dev --prefer-offline --no-audit
@@ -49,6 +52,9 @@ RUN mkdir -p ./public
 # Create data directory for PDFs
 RUN mkdir -p ./data
 
+# Make startup script executable
+RUN chmod +x ./scripts/docker-start.sh
+
 # Expose port
 EXPOSE 3000
 
@@ -56,5 +62,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD test -d /app/.next && echo "ok" || exit 1
 
-# Start the Next.js server
-CMD ["npm", "run", "start"]
+# Start the Next.js server with database initialization
+CMD ["sh", "./scripts/docker-start.sh"]
