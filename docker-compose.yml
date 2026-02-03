@@ -63,6 +63,8 @@ services:
       HOSTNAME: 0.0.0.0
       # Skip bootstrap on startup - run manually when ready
       SKIP_BOOTSTRAP: ${SKIP_BOOTSTRAP:-false}
+    ports:
+      - "13000:3000"
     volumes:
       - ./data:/app/data
       - silip-logs:/app/.next
