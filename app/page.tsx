@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import { Search, Copy, Check, Loader2 } from 'lucide-react'
+import Link from 'next/link'
+import { Search, Copy, Check, Loader2, Database } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -58,7 +59,7 @@ export default function SearchPage() {
   }, [performSearch])
 
   const handleCopyLink = useCallback(async (sectionId: string) => {
-    const url = `${window.location.origin}/section/${sectionId}`
+    const url = `${window.location.origin}/section/${sectionId}${query ? `?q=${encodeURIComponent(query)}` : ''}`
     
     try {
       await navigator.clipboard.writeText(url)
@@ -67,14 +68,15 @@ export default function SearchPage() {
     } catch (err) {
       console.error('Failed to copy:', err)
     }
-  }, [])
+  }, [query])
 
   // Trigger search when filter changes (if there's a query)
   useEffect(() => {
     if (query.trim() && hasSearched) {
       performSearch()
     }
-  }, [filter, query, hasSearched, performSearch])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter])
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white dark:from-slate-950 dark:to-slate-900">
@@ -83,9 +85,17 @@ export default function SearchPage() {
         <div className="max-w-4xl mx-auto text-center space-y-8">
           {/* Logo/Title */}
           <div className="space-y-4">
-            <h1 className="text-6xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400">
-              SILIP
-            </h1>
+            <div className="flex items-center justify-center gap-4">
+              <h1 className="text-6xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400">
+                SILIP
+              </h1>
+              <Link href="/resources">
+                <Button variant="outline" size="sm" className="gap-2">
+                  <Database className="h-4 w-4" />
+                  Resources
+                </Button>
+              </Link>
+            </div>
             <p className="text-xl text-muted-foreground">
               Philippine Data Privacy Search Engine
             </p>
@@ -116,7 +126,10 @@ export default function SearchPage() {
                   <TabsTrigger value="ALL">All Documents</TabsTrigger>
                   <TabsTrigger value="DPA">DPA Law</TabsTrigger>
                   <TabsTrigger value="IRR">IRR</TabsTrigger>
-                  <TabsTrigger value="ISSUANCE">Circulars</TabsTrigger>
+                  <TabsTrigger value="CIRCULAR">Circulars</TabsTrigger>
+                  <TabsTrigger value="ADVISORY">Advisories</TabsTrigger>
+                  <TabsTrigger value="ORDER">Orders</TabsTrigger>
+                  <TabsTrigger value="RESOLUTION">Resolutions</TabsTrigger>
                 </TabsList>
               </Tabs>
             </div>
@@ -199,19 +212,26 @@ export default function SearchPage() {
 
                 {results.map((result) => (
                   <Card key={result.id} className="hover:shadow-lg transition-shadow">
-                    <CardHeader>
-                      <CardDescription>
-                        {result.documentAlias} - {result.sectionNum}
-                      </CardDescription>
-                      <CardTitle className="text-xl">{result.sectionTitle}</CardTitle>
-                    </CardHeader>
-                    
-                    <CardContent>
-                      <div 
-                        className="text-sm leading-relaxed text-muted-foreground"
-                        dangerouslySetInnerHTML={{ __html: result.highlightedContent }}
-                      />
-                    </CardContent>
+                    <Link 
+                      href={`/section/${result.id}?q=${encodeURIComponent(query)}`}
+                      className="block"
+                    >
+                      <CardHeader>
+                        <CardDescription>
+                          {result.documentAlias} - {result.sectionNum}
+                        </CardDescription>
+                        <CardTitle className="text-xl hover:text-primary transition-colors">
+                          {result.sectionTitle}
+                        </CardTitle>
+                      </CardHeader>
+                      
+                      <CardContent>
+                        <div 
+                          className="text-sm leading-relaxed text-muted-foreground"
+                          dangerouslySetInnerHTML={{ __html: result.highlightedContent }}
+                        />
+                      </CardContent>
+                    </Link>
 
                     <CardFooter className="flex flex-wrap gap-2 justify-between">
                       <div className="flex flex-wrap gap-2">

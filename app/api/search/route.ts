@@ -28,10 +28,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Validate filter parameter
-    const validFilters: SearchFilter[] = ['ALL', 'DPA', 'IRR', 'ISSUANCE']
+    const validFilters: SearchFilter[] = ['ALL', 'DPA', 'IRR', 'ISSUANCE', 'CIRCULAR', 'ADVISORY', 'ORDER', 'DECISION', 'RESOLUTION']
     if (!validFilters.includes(filter)) {
       return NextResponse.json(
-        { error: 'Invalid filter. Must be one of: ALL, DPA, IRR, ISSUANCE' },
+        { error: 'Invalid filter. Must be one of: ALL, DPA, IRR, ISSUANCE, CIRCULAR, ADVISORY, ORDER, DECISION, RESOLUTION' },
         { status: 400 }
       )
     }

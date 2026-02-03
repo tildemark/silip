@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import { cacheService } from '../lib/redis'
+import { createIngestionLog, completeIngestionLog } from './ingestion-utils'
 
 const prisma = new PrismaClient()
 
@@ -15,6 +16,20 @@ const prisma = new PrismaClient()
 
 async function ingestDPASample() {
   console.log('🚀 Starting DPA 2012 sample ingestion...')
+
+  // Create ingestion log
+  const log = await createIngestionLog({
+    source: 'DPA 2012 (Sample Data)',
+    sourceUrl: 'https://www.privacy.gov.ph/data-privacy-act/',
+    docType: 'DPA',
+    metadata: {
+      version: '1.0.0',
+      type: 'sample',
+      sections: 5,
+    },
+  })
+
+  console.log(`📝 Created ingestion log: ${log.id}`)
 
   // Create or get the DPA document
   const dpaDoc = await prisma.legalDocument.upsert({
@@ -121,6 +136,10 @@ The notification shall at least describe the nature of the breach, the sensitive
   console.log('📊 Summary:')
   console.log(`   - Document: ${dpaDoc.alias}`)
   console.log(`   - Sections: ${sections.length}`)
+
+  // Update ingestion log
+  await completeIngestionLog(log.id, sections.length, 'COMPLETED')
+  console.log('✅ Ingestion log updated')
 
   // Invalidate search cache
   console.log('\n🔄 Invalidating search cache...')

@@ -3,7 +3,7 @@ import { prisma } from './db'
 import { cacheService } from './redis'
 import { normalizeQuery, highlightSearchTerms, extractSnippet } from './utils'
 
-export type SearchFilter = 'ALL' | 'DPA' | 'IRR' | 'ISSUANCE'
+export type SearchFilter = 'ALL' | 'DPA' | 'IRR' | 'ISSUANCE' | 'CIRCULAR' | 'ADVISORY' | 'ORDER' | 'DECISION' | 'RESOLUTION'
 
 export interface SearchResult {
   id: string
@@ -91,8 +91,11 @@ export async function searchLegalDocuments(
 
   // Transform results with highlighting
   const results: SearchResult[] = sections.map((section) => {
-    const snippet = extractSnippet(section.content, query, 300)
-    const highlightedContent = highlightSearchTerms(snippet, query)
+    // Get expanded query terms including keyword variations
+    const expandedQuery = getExpandedQueryTerms(query)
+    
+    const snippet = extractSnippet(section.content, expandedQuery, 300)
+    const highlightedContent = highlightSearchTerms(snippet, expandedQuery)
 
     return {
       id: section.id,
@@ -131,7 +134,7 @@ function buildWhereClause(query: string, filter: SearchFilter): Prisma.SectionWh
   // Split query into terms for multi-word search
   const searchTerms = query.split(/\s+/).filter((term) => term.length > 0)
 
-  // Build search conditions
+  // Build search conditions - search only in content and title
   const searchConditions: Prisma.SectionWhereInput[] = searchTerms.map((term) => ({
     OR: [
       {
@@ -146,16 +149,6 @@ function buildWhereClause(query: string, filter: SearchFilter): Prisma.SectionWh
           mode: 'insensitive' as Prisma.QueryMode,
         },
       },
-      {
-        tags: {
-          some: {
-            name: {
-              contains: term,
-              mode: 'insensitive' as Prisma.QueryMode,
-            },
-          },
-        },
-      },
     ],
   }))
 
@@ -164,16 +157,19 @@ function buildWhereClause(query: string, filter: SearchFilter): Prisma.SectionWh
     AND: searchConditions,
   }
 
-  // Add document type filter if not ALL
+  // Add document type or subtype filter
   if (filter !== 'ALL') {
-    const docTypeMap: Record<Exclude<SearchFilter, 'ALL'>, DocType> = {
-      DPA: 'DPA',
-      IRR: 'IRR',
-      ISSUANCE: 'ISSUANCE',
-    }
-
-    whereClause.document = {
-      type: docTypeMap[filter],
+    if (filter === 'DPA' || filter === 'IRR' || filter === 'ISSUANCE') {
+      // Main document type filter
+      whereClause.document = {
+        type: filter,
+      }
+    } else if (filter === 'CIRCULAR' || filter === 'ADVISORY' || filter === 'ORDER' || filter === 'DECISION' || filter === 'RESOLUTION') {
+      // Issuance subtype filter
+      whereClause.document = {
+        type: 'ISSUANCE',
+        subType: filter,
+      }
     }
   }
 
@@ -247,6 +243,70 @@ export async function getRelatedSections(
     tags: sec.tags,
     url: sec.document.url,
   }))
+}
+
+/**
+ * Expand query terms with keyword variations for better highlighting
+ * For example: "cctv" expands to "cctv surveillance camera monitoring recording"
+ */
+function getExpandedQueryTerms(query: string): string {
+  const lowerQuery = query.toLowerCase()
+  const terms = lowerQuery.split(/\s+/)
+  
+  // Keyword variations mapping (matches auto-tagging in ingestion-utils.ts)
+  const variations: Record<string, string[]> = {
+    'cctv': ['cctv', 'surveillance', 'video surveillance', 'camera', 'monitoring', 'recording', 'closed circuit'],
+    'consent': ['consent', 'authorization', 'permission', 'agreement', 'approval'],
+    'breach': ['breach', 'data breach', 'security incident', 'unauthorized access', 'leak', 'compromise'],
+    'cross-border': ['cross-border', 'cross border', 'transborder', 'international transfer', 'data transfer'],
+    'children': ['children', 'child', 'minor', 'minors', 'youth', 'parental consent'],
+    'biometric': ['biometric', 'biometrics', 'fingerprint', 'facial recognition', 'iris scan', 'retina'],
+    'ai': ['artificial intelligence', 'ai', 'machine learning', 'automated decision', 'algorithm'],
+    'marketing': ['marketing', 'direct marketing', 'advertising', 'promotional', 'advertisement'],
+    'employee': ['employee', 'employment', 'worker', 'personnel', 'hr', 'human resources'],
+    'health': ['health', 'medical', 'healthcare', 'patient', 'hospital', 'clinical'],
+    'financial': ['financial', 'bank', 'banking', 'credit', 'payment', 'transaction'],
+    'government': ['government', 'public sector', 'agency', 'agencies', 'authorities', 'state'],
+    'encryption': ['encryption', 'encrypted', 'cryptographic', 'cipher', 'encode'],
+    'processor': ['processor', 'data processor', 'third party', 'service provider'],
+    'controller': ['controller', 'data controller', 'pic', 'personal information controller'],
+    'portability': ['portability', 'data portability', 'transfer', 'export'],
+    'privacy policy': ['privacy policy', 'privacy notice', 'transparency', 'disclosure'],
+    'accountability': ['accountability', 'documentation', 'record', 'compliance'],
+    'lawful': ['lawful', 'legal basis', 'legitimate', 'justified'],
+    'subcontracting': ['subcontracting', 'outsourcing', 'third party', 'contractor'],
+    'registration': ['registration', 'dpo', 'data protection officer', 'register'],
+    'videoconferencing': ['videoconferencing', 'video conference', 'zoom', 'virtual meeting', 'remote meeting'],
+    'election': ['election', 'electoral', 'campaign', 'political', 'voter'],
+    'transparency': ['transparency', 'disclosure', 'notice', 'information'],
+    'deceptive': ['deceptive', 'dark pattern', 'manipulative', 'misleading'],
+    'contractual': ['contractual', 'contract', 'agreement', 'clause', 'scc', 'standard contractual'],
+    'insurance': ['insurance', 'insurer', 'policy', 'premium', 'claim'],
+    'pet': ['privacy enhancing', 'pet', 'anonymization', 'pseudonymization'],
+    'asean': ['asean', 'regional', 'southeast asia', 'asia pacific'],
+    'public officer': ['public officer', 'government official', 'civil servant', 'public servant'],
+    'sensitive': ['sensitive', 'sensitive personal information', 'spi', 'special category'],
+    'security': ['security', 'security measure', 'safeguard', 'protection'],
+    'npc': ['npc', 'national privacy commission', 'commission', 'privacy commission'],
+    'penalty': ['penalty', 'fine', 'sanction', 'liability', 'punishment'],
+    'compliance': ['compliance', 'obligation', 'requirement', 'duty'],
+  }
+  
+  // Collect all expanded terms
+  const expandedTerms = new Set<string>()
+  
+  for (const term of terms) {
+    expandedTerms.add(term) // Add original term
+    
+    // Check if this term has variations
+    for (const [key, keywords] of Object.entries(variations)) {
+      if (term.includes(key) || key.includes(term)) {
+        keywords.forEach(keyword => expandedTerms.add(keyword))
+      }
+    }
+  }
+  
+  return Array.from(expandedTerms).join(' ')
 }
 
 /**

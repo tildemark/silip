@@ -1,8 +1,46 @@
 import * as cheerio from 'cheerio'
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, DocType, IngestionStatus } from '@prisma/client'
 import { cacheService } from '../lib/redis'
 
 const prisma = new PrismaClient()
+
+/**
+ * Create an ingestion log entry
+ */
+export async function createIngestionLog(data: {
+  source: string
+  sourceUrl?: string
+  docType: DocType
+  metadata?: any
+}) {
+  return prisma.ingestionLog.create({
+    data: {
+      ...data,
+      status: 'IN_PROGRESS',
+      metadata: data.metadata || {},
+    },
+  })
+}
+
+/**
+ * Update ingestion log with completion status
+ */
+export async function completeIngestionLog(
+  logId: string,
+  sectionsCount: number,
+  status: 'COMPLETED' | 'FAILED' = 'COMPLETED',
+  errorMessage?: string
+) {
+  return prisma.ingestionLog.update({
+    where: { id: logId },
+    data: {
+      status,
+      sectionsCount,
+      errorMessage,
+      completedAt: new Date(),
+    },
+  })
+}
 
 /**
  * Auto-tagging utility
@@ -18,23 +56,46 @@ export async function autoTagSection(
 ): Promise<void> {
   const allTags = await prisma.tag.findMany()
   
-  const combinedText = `${title} ${content}`.toLowerCase()
+  const lowerContent = content.toLowerCase()
+  const lowerTitle = title.toLowerCase()
   const matchedTags: string[] = []
 
-  // Simple keyword matching
-  // In production, you might use NLP or more sophisticated matching
   for (const tag of allTags) {
-    const tagName = tag.name.toLowerCase()
-    const keywords = [
-      tagName,
-      ...(tag.description?.toLowerCase().split(',') || []),
-    ]
-
-    const hasMatch = keywords.some((keyword) =>
-      combinedText.includes(keyword.trim())
+    const lowerTagName = tag.name.toLowerCase()
+    
+    // Check for exact or partial matches in content or title
+    // For multi-word tags, check if all words are present
+    const tagWords = lowerTagName.split(/\s+/)
+    const allWordsPresent = tagWords.every(word => 
+      lowerContent.includes(word) || lowerTitle.includes(word)
     )
-
-    if (hasMatch) {
+    
+    // Also check for the full tag name
+    const fullTagPresent = lowerContent.includes(lowerTagName) || lowerTitle.includes(lowerTagName)
+    
+    // Special handling for common variations
+    const variations: Record<string, string[]> = {
+      'cctv': ['cctv', 'surveillance', 'video surveillance', 'camera', 'monitoring'],
+      'children': ['child', 'children', 'minor', 'parental'],
+      'artificial intelligence': ['ai', 'artificial intelligence', 'machine learning', 'automated decision'],
+      'data breach': ['breach', 'security incident', 'unauthorized access', 'pdbn'],
+      'consent': ['consent', 'permission', 'authorization'],
+      'cross-border transfer': ['cross-border', 'international transfer', 'transborder'],
+      'privacy enhancing technologies': ['pet', 'pets', 'privacy enhancing', 'encryption'],
+      'biometric data': ['biometric', 'fingerprint', 'facial recognition', 'iris scan'],
+      'employee data': ['employee', 'employment', 'hr', 'human resource'],
+      'videoconferencing': ['videoconference', 'videoconferencing', 'virtual appearance', 'remote meeting'],
+      'elections': ['election', 'campaign', 'political', 'voter'],
+      'deceptive design': ['dark pattern', 'deceptive design', 'manipulative'],
+      'insurance': ['insurance', 'insurer', 'policy holder'],
+    }
+    
+    const tagVariations = variations[lowerTagName] || []
+    const hasVariation = tagVariations.some(variant => 
+      lowerContent.includes(variant) || lowerTitle.includes(variant)
+    )
+    
+    if (fullTagPresent || allWordsPresent || hasVariation) {
       matchedTags.push(tag.id)
     }
   }
@@ -64,8 +125,12 @@ export async function autoTagSection(
  */
 export function cleanText(text: string): string {
   return text
-    .replace(/\s+/g, ' ') // Normalize whitespace
-    .replace(/\n{3,}/g, '\n\n') // Limit consecutive newlines
+    .replace(/\r\n/g, '\n') // Normalize line endings
+    .replace(/\t/g, ' ') // Replace tabs with spaces
+    .replace(/ +/g, ' ') // Normalize multiple spaces to single space
+    .replace(/\n +/g, '\n') // Remove leading spaces on lines
+    .replace(/ +\n/g, '\n') // Remove trailing spaces on lines
+    .replace(/\n{4,}/g, '\n\n\n') // Limit consecutive newlines to max 3
     .trim()
 }
 

@@ -12,16 +12,18 @@ datasource db {
 
 // Legal documents (DPA, IRR, Circulars, etc.)
 model LegalDocument {
-  id          String    @id @default(cuid())
-  type        DocType   // DPA, IRR, ISSUANCE
-  title       String    // "Data Privacy Act of 2012"
-  alias       String    @unique // "DPA 2012" or "NPC Circular 16-01"
-  url         String?   // Source URL
+  id          String       @id @default(cuid())
+  type        DocType      // DPA, IRR, ISSUANCE
+  subType     IssuanceType? // CIRCULAR, ADVISORY, ORDER, DECISION, RESOLUTION (for ISSUANCE type)
+  title       String       // "Data Privacy Act of 2012"
+  alias       String       @unique // "DPA 2012" or "NPC Circular 16-01"
+  url         String?      // Source URL
   sections    Section[]
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
   @@index([type])
+  @@index([subType])
 }
 
 // Individual sections/articles from each document
@@ -56,8 +58,40 @@ model Tag {
   @@index([name])
 }
 
+// Track ingestion history for transparency and debugging
+model IngestionLog {
+  id              String         @id @default(cuid())
+  source          String         // "DPA 2012", "IRR 2016", "NPC Circular 16-01", etc.
+  sourceUrl       String?        // Original URL
+  docType         DocType        // Document type
+  status          IngestionStatus
+  sectionsCount   Int            @default(0) // Number of sections ingested
+  errorMessage    String?        @db.Text
+  metadata        Json?          // Additional metadata (file size, scraper version, etc.)
+  
+  startedAt       DateTime       @default(now())
+  completedAt     DateTime?
+  
+  @@index([docType])
+  @@index([status])
+  @@index([startedAt])
+}
+
 enum DocType {
   DPA       // Data Privacy Act of 2012
   IRR       // Implementing Rules and Regulations
   ISSUANCE  // Circulars, Advisories, Opinions
+}
+enum IssuanceType {
+  CIRCULAR    // NPC Circulars
+  ADVISORY    // NPC Advisories  
+  ORDER       // NPC Orders
+  DECISION    // NPC Decisions
+  RESOLUTION  // NPC Resolutions
+}
+enum IngestionStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
 }

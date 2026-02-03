@@ -99,6 +99,20 @@ export class CacheService {
   async invalidateSearchCache(): Promise<void> {
     await this.deletePattern('silip:search:*')
   }
+
+  /**
+   * Disconnect Redis client (use when script is done)
+   */
+  async disconnect(): Promise<void> {
+    try {
+      if (redis) {
+        await redis.quit()
+        redis = null
+      }
+    } catch (error) {
+      console.error('Redis disconnect error:', error)
+    }
+  }
 }
 
 export const cacheService = new CacheService()
