@@ -18,6 +18,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const query = searchParams.get('q')
     const filter = (searchParams.get('filter') || 'ALL') as SearchFilter
+    const page = parseInt(searchParams.get('page') || '1')
+    const pageSize = Math.min(parseInt(searchParams.get('pageSize') || '20'), 100)
 
     // Validate query parameter
     if (!query || query.trim().length === 0) {
@@ -37,7 +39,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Perform search
-    const results = await searchLegalDocuments(query, filter)
+    const results = await searchLegalDocuments(query, filter, page, pageSize)
 
     // Return results with cache header
     return NextResponse.json(results, {

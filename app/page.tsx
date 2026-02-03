@@ -20,8 +20,12 @@ export default function SearchPage() {
   const [hasSearched, setHasSearched] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(0)
+  const [totalResults, setTotalResults] = useState(0)
+  const pageSize = 20
 
-  const performSearch = useCallback(async () => {
+  const performSearch = useCallback(async (page: number = 1) => {
     if (!query.trim()) {
       return
     }
@@ -29,14 +33,17 @@ export default function SearchPage() {
     setIsLoading(true)
     setError(null)
     setHasSearched(true)
+    setCurrentPage(page)
 
     try {
       const params = new URLSearchParams({
         q: query,
         filter: filter,
+        page: page.toString(),
+        pageSize: pageSize.toString(),
       })
 
-      const response = await fetch(`/api/search?${params}`)
+      const response = await fetch(`/api/search/v2?${params}`)
       
       if (!response.ok) {
         throw new Error('Search failed')
@@ -44,6 +51,8 @@ export default function SearchPage() {
 
       const data = await response.json()
       setResults(data.results || [])
+      setTotalPages(data.totalPages || 0)
+      setTotalResults(data.total || 0)
     } catch (err) {
       console.error('Search error:', err)
       setError('An error occurred while searching. Please try again.')
@@ -51,7 +60,7 @@ export default function SearchPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [query, filter])
+  }, [query, filter, pageSize])
 
   const handleSearch = useCallback((e: React.FormEvent) => {
     e.preventDefault()
@@ -73,7 +82,8 @@ export default function SearchPage() {
   // Trigger search when filter changes (if there's a query)
   useEffect(() => {
     if (query.trim() && hasSearched) {
-      performSearch()
+      setCurrentPage(1)
+      performSearch(1)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter])
@@ -207,7 +217,7 @@ export default function SearchPage() {
             {!isLoading && !error && results.length > 0 && (
               <div className="space-y-6">
                 <div className="text-sm text-muted-foreground">
-                  Found {results.length} result{results.length !== 1 ? 's' : ''} for "{query}"
+                  Showing {((currentPage - 1) * pageSize) + 1}-{Math.min(currentPage * pageSize, totalResults)} of {totalResults} result{totalResults !== 1 ? 's' : ''} for "{query}"
                 </div>
 
                 {results.map((result) => (
@@ -217,8 +227,17 @@ export default function SearchPage() {
                       className="block"
                     >
                       <CardHeader>
-                        <CardDescription>
-                          {result.documentAlias} - {result.sectionNum}
+                        <CardDescription className="flex items-center gap-2 flex-wrap">
+                          <Badge 
+                            variant={
+                              result.documentType === 'DPA' ? 'default' :
+                              result.documentType === 'IRR' ? 'default' :
+                              'secondary'
+                            }
+                          >
+                            {result.documentSubtype || result.documentType}
+                          </Badge>
+                          <span>{result.documentAlias} - Section {result.sectionNum}</span>
                         </CardDescription>
                         <CardTitle className="text-xl hover:text-primary transition-colors">
                           {result.sectionTitle}
@@ -263,6 +282,56 @@ export default function SearchPage() {
                     </CardFooter>
                   </Card>
                 ))}
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="flex justify-center items-center gap-2 mt-8">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => performSearch(currentPage - 1)}
+                      disabled={currentPage === 1 || isLoading}
+                    >
+                      Previous
+                    </Button>
+                    
+                    <div className="flex gap-1">
+                      {Array.from({ length: Math.min(totalPages, 10) }, (_, i) => {
+                        const page = i + 1
+                        // Show first 3, last 3, and current page +/- 1
+                        if (
+                          page <= 3 ||
+                          page > totalPages - 3 ||
+                          (page >= currentPage - 1 && page <= currentPage + 1)
+                        ) {
+                          return (
+                            <Button
+                              key={page}
+                              variant={currentPage === page ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => performSearch(page)}
+                              disabled={isLoading}
+                            >
+                              {page}
+                            </Button>
+                          )
+                        } else if (page === 4 || page === totalPages - 3) {
+                          return <span key={page} className="px-2">...</span>
+                        }
+                        return null
+                      })}
+                    </div>
+                    
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => performSearch(currentPage + 1)}
+                      disabled={currentPage === totalPages || isLoading}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -43,6 +43,18 @@ export default function SectionPage() {
   const [error, setError] = useState<string | null>(null)
   
   const query = searchParams.get('q') || ''
+  
+  // Filter stop words from query for highlighting
+  const stopWords = new Set([
+    'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 
+    'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'or', 'that', 
+    'the', 'to', 'was', 'will', 'with', 'do', 'i', 'me', 'my', 'we', 
+    'you', 'your', 'this', 'these', 'there', 'they', 'them', 'their'
+  ])
+  const highlightQuery = query
+    .split(/\s+/)
+    .filter((term) => term.length > 0 && !stopWords.has(term.toLowerCase()))
+    .join(' ')
 
   useEffect(() => {
     async function fetchSection() {
@@ -159,7 +171,7 @@ export default function SectionPage() {
                     if (!trimmed) return null
                     
                     // Apply highlighting if query exists
-                    const highlighted = query ? highlightSearchTerms(trimmed, query) : trimmed
+                    const highlighted = highlightQuery ? highlightSearchTerms(trimmed, highlightQuery) : trimmed
                     
                     // Check if it's a list item
                     if (trimmed.match(/^[\(（]?[a-z0-9]+[\)）]/i) || trimmed.match(/^[\(（]?[ivxlcdm]+[\)）]/i) || trimmed.match(/^[•·\-\*]/)) {
@@ -167,7 +179,7 @@ export default function SectionPage() {
                         <div key={idx} className="pl-6 space-y-2">
                           {trimmed.split('\n').map((line, lineIdx) => {
                             const cleanLine = line.replace(/^[\(（]?[a-z0-9ivxlcdm]+[\)）]?\s*/i, '').replace(/^[•·\-\*]\s*/, '')
-                            const highlightedLine = query ? highlightSearchTerms(cleanLine, query) : cleanLine
+                            const highlightedLine = highlightQuery ? highlightSearchTerms(cleanLine, highlightQuery) : cleanLine
                             return (
                               <div key={lineIdx} className="flex gap-2">
                                 <span className="text-muted-foreground flex-shrink-0">•</span>

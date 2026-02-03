@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { hybridSearch, type SearchResult, type SearchFilter } from '@/lib/search'
+import { searchLegalDocuments, type SearchFilter } from '@/lib/search'
 import { rerankResults } from '@/lib/ai'
 
 /**
@@ -25,7 +25,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const query = searchParams.get('q')
     const filter = (searchParams.get('filter') as SearchFilter) || 'ALL'
-    const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100)
+    const page = parseInt(searchParams.get('page') || '1')
+    const pageSize = Math.min(parseInt(searchParams.get('pageSize') || '20'), 100)
 
     if (!query || query.trim().length === 0) {
       return NextResponse.json(
@@ -41,69 +42,10 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Perform hybrid search (already sorted by matched term count)
-    const candidates = await hybridSearch(query, filter, Math.min(limit * 3, 50))
+    // Perform paginated search with improved ranking
+    const response = await searchLegalDocuments(query, filter, page, pageSize)
 
-    if (candidates.length === 0) {
-      return NextResponse.json({
-        results: [],
-        count: 0,
-        query,
-        filter,
-        reranked: false,
-        message: 'No results found',
-      })
-    }
-
-    // Use keyword-based ranking primarily
-    // Only apply AI re-ranking for ambiguous cases with specific legal keywords
-    const shouldRerank =
-      /cctv|surveillance|monitoring|compliance|consent|breach|algorithm|biometric/i.test(query) && 
-      query.split(/\s+/).length >= 4  // Only for longer queries with specific legal terms
-
-    let results: (SearchResult & { score?: number })[] = candidates.slice(0, limit)
-    let reranked = false
-
-    if (shouldRerank && candidates.length > 5) {
-      try {
-        // Convert to format expected by rerankResults
-        const snippets = candidates.slice(0, Math.min(candidates.length, 20)).map((r) => ({
-          id: r.id,
-          sectionNum: r.sectionNum,
-          title: r.sectionTitle,
-          content: r.snippet,
-        }))
-
-        // Re-rank top candidates using AI to prevent semantic drift
-        const rerankedSnippets = await rerankResults(query, snippets)
-
-        if (rerankedSnippets.length > 0) {
-          // Map back to full SearchResult objects
-          const rerankedIds = rerankedSnippets.map((s) => s.id)
-          results = candidates
-            .filter((c) => rerankedIds.includes(c.id))
-            .sort((a, b) => rerankedIds.indexOf(a.id) - rerankedIds.indexOf(b.id))
-            .slice(0, limit)
-            .map((r) => ({
-              ...r,
-              score: 8, // Placeholder - would need to return scores from rerankResults
-            }))
-          reranked = true
-        }
-      } catch (rerankError) {
-        console.error('Re-ranking failed, using keyword results:', rerankError)
-        // Fall back to keyword results if re-ranking fails
-      }
-    }
-
-    return NextResponse.json({
-      results,
-      count: results.length,
-      query,
-      filter,
-      reranked,
-      message: reranked ? 'Results re-ranked using AI' : 'Results from hybrid search',
-    })
+    return NextResponse.json(response)
   } catch (error) {
     console.error('Search v2 error:', error)
 
