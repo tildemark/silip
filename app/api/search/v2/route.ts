@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Perform hybrid search
+    // Perform hybrid search (already sorted by matched term count)
     const candidates = await hybridSearch(query, filter, Math.min(limit * 3, 50))
 
     if (candidates.length === 0) {
@@ -55,12 +55,11 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Determine if re-ranking should be applied
-    // Re-ranking is beneficial for:
-    // 1. Multi-word queries (potential semantic complexity)
-    // 2. Specific legal terms that might have semantic drift
+    // Use keyword-based ranking primarily
+    // Only apply AI re-ranking for ambiguous cases with specific legal keywords
     const shouldRerank =
-      query.split(/\s+/).length >= 3 || /cctv|surveillance|monitoring|compliance/i.test(query)
+      /cctv|surveillance|monitoring|compliance|consent|breach|algorithm|biometric/i.test(query) && 
+      query.split(/\s+/).length >= 4  // Only for longer queries with specific legal terms
 
     let results: (SearchResult & { score?: number })[] = candidates.slice(0, limit)
     let reranked = false
