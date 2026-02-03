@@ -1,335 +1,216 @@
 # SILIP: Searchable Interface for Legal Information & Privacy
 
-**Version 1.0.0**
+[![Next.js](https://img.shields.io/badge/Next.js-16.1.6-black?logo=next.js)](https://nextjs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://www.typescriptlang.org)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql)](https://www.postgresql.org)
+[![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis)](https://redis.io)
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
-**SILIP** is a comprehensive, high-performance search engine for Philippine data privacy laws and regulations. Built specifically for Data Protection Officers (DPOs), legal professionals, and privacy practitioners, SILIP provides instant access to the Data Privacy Act, IRR, and all NPC issuances through an intelligent, context-aware search interface.
+A modern, full-featured search engine for Philippine data privacy laws with semantic search, AI re-ranking, and production-ready infrastructure.
 
-![Next.js](https://img.shields.io/badge/Next.js-14-black) ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue) ![Redis](https://img.shields.io/badge/Redis-7-red) ![Prisma](https://img.shields.io/badge/Prisma-5-2D3748)
+## 🎯 Features
 
-## 🎯 What Makes SILIP Different
+- **Semantic Search v2.0** - Hybrid keyword + vector search with advanced ranking
+- **AI Re-ranking** - Gemini-powered semantic analysis for complex queries
+- **Stop Word Filtering** - Clean results, no noise from common words
+- **Document Type Badges** - Visual identification of law sources (DPA, IRR, Issuances)
+- **Smart Pagination** - Navigate thousands of results efficiently
+- **Redis Caching** - Sub-100ms response times
+- **Production-Ready** - Docker deployment, full API documentation, comprehensive testing
+- **Dark Mode Support** - Beautiful responsive UI with Tailwind CSS
 
-Unlike simple PDF searches, SILIP intelligently **parses and structures** legal documents into queryable sections, making privacy law research fast and precise:
-
-* **Search "consent"** → Get all sections about consent across DPA, IRR, advisories, and decisions
-* **Search "CCTV"** → Automatically includes related terms like surveillance, camera, monitoring
-* **Click any result** → See highlighted terms in context with direct links to source PDFs
-* **Filter by type** → Narrow results to just Advisories, Circulars, Decisions, Orders, or Resolutions
-
-## 🚀 Key Features
-
-### 🔍 Intelligent Search Engine
-* **Full-text search** across 400+ legal sections with intelligent keyword expansion
-* **35+ legal concept tags** automatically mapped (Consent, Data Breach, CCTV, DPO, etc.)
-* **Smart highlighting** preserves search terms from results through detail pages
-* **Multi-filter support** for all document types (DPA, IRR, Advisory, Circular, Order, Decision, Resolution)
-
-### 📚 Comprehensive Legal Database
-* **Data Privacy Act of 2012** - All 44 sections fully parsed and searchable
-* **IRR 2016** - Complete 72 sections with cross-references
-* **21 NPC Advisories** - Including AI Guidelines, CCTV policies, and more
-* **32 NPC Circulars** - Policy guidance and compliance requirements  
-* **92 NPC Decisions** - Adjudication case outcomes
-* **73 NPC Orders** - Cease and desist orders, breach notifications
-* **140 NPC Resolutions** - Compliance investigations and determinations
-
-### 📄 Document Management
-* **Secure PDF downloads** for all source documents
-* **Direct NPC website links** to original publications
-* **Path traversal protection** for secure file serving
-* **Organized resources page** with all ingested documents
-
-### 🔧 Developer Tools
-* **OpenAPI 3.0 documentation** with Swagger UI at `/api-docs`
-* **Interactive API testing** for all endpoints
-* **RESTful API** for search, resources, and section retrieval
-* **Redis caching** with automatic invalidation
-
-## 🛠️ Tech Stack
-
-* **Framework:** [Next.js 14](https://nextjs.org/) (App Router)
-* **Language:** TypeScript 5
-* **Database:** [PostgreSQL](https://www.postgresql.org/) 16
-* **ORM:** [Prisma](https://www.prisma.io/) 5
-* **Caching:** [Redis](https://redis.io/) 7 (via `ioredis`)
-* **UI Components:** [Shadcn/UI](https://ui.shadcn.com/) + [Tailwind CSS](https://tailwindcss.com/)
-* **Icons:** [Lucide React](https://lucide.dev/)
-* **Ingestion:** `pdf-parse` (PDFs), `cheerio` (HTML parsing)
-
----
-
-## ⚡ Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
+- Node.js 18+
+- Docker & Docker Compose
+- npm or yarn
 
-* Node.js 18+
-* PostgreSQL 16+
-* Redis 7+
-
-### 1. Clone & Install
+### Installation
 
 ```bash
-git clone https://github.com/tildemark/silip.git
+# Clone and install
+git clone https://github.com/tildemark/silip
 cd silip
 npm install
-```
 
-### 2. Database Setup
+# Start infrastructure
+docker-compose up -d
 
-```bash
-# Generate Prisma Client
+# Setup database
 npx prisma generate
-
-# Push schema to database
 npx prisma db push
+npm run prisma:seed
 
-# Seed initial tags (35 privacy concept tags)
-npx prisma db seed
-```
+# Load sample data
+npm run ingest:sample
 
-### 3. Set Environment Variables
-
-Create a `.env` file:
-
-```env
-DATABASE_URL="postgresql://user:password@localhost:5432/silip"
-REDIS_URL="redis://localhost:6379"
-```
-
-### 4. Ingest Legal Documents
-
-```bash
-# Ingest DPA 2012 (44 sections)
-npx tsx scripts/ingest-dpa-pdf.ts
-
-# Ingest IRR 2016 (72 sections)
-npx tsx scripts/ingest-irr-pdf.ts
-
-# Ingest NPC Advisories (21 documents)
-npx tsx scripts/ingest-advisories.ts
-
-# Ingest NPC Circulars (32 documents)
-npx tsx scripts/ingest-circulars.ts
-
-# Ingest NPC Decisions (92 documents)
-npx tsx scripts/ingest-decisions.ts
-
-# Ingest NPC Orders (73 documents)
-npx tsx scripts/ingest-orders.ts
-
-# Ingest NPC Resolutions (140 documents)
-npx tsx scripts/ingest-resolutions.ts
-```
-
-### 5. Start Development Server
-
-```bash
+# Start dev server
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+Open [http://localhost:3000](http://localhost:3000)
 
-**Try searching for:** 
-- `consent` - Find all sections about consent and authorization
-- `data breach` - Security breach requirements and notifications
-- `CCTV` - Surveillance and camera policies
-- `sensitive personal information` - Special categories of data
+## 📖 Documentation
 
-**Explore the API:** Visit [http://localhost:3000/api-docs](http://localhost:3000/api-docs) for interactive API documentation.
+- **[Complete Documentation](DOCUMENTATION.md)** - Full setup, deployment, API reference
+- **[Setup Guide](DOCUMENTATION.md#setup-guide)** - Detailed environment setup
+- **[Deployment Guide](DOCUMENTATION.md#deployment)** - Vercel, Docker, OCI/Portainer
+- **[API Documentation](DOCUMENTATION.md#api-documentation)** - REST endpoint reference
+- **[Ingestion Guide](DOCUMENTATION.md#ingestion-guide)** - Adding custom documents
+- **[Changelog](CHANGELOG.md)** - Version history and release notes
 
----
+## 🏗️ Tech Stack
 
-## 🏗️ Project Structure
+- **Frontend:** Next.js 16.1.6, TypeScript, TailwindCSS, Shadcn/UI
+- **Backend:** Node.js, Express (via Next.js API routes), Prisma ORM
+- **Database:** PostgreSQL 16, pgvector for embeddings
+- **Cache:** Redis 7
+- **AI/ML:** Google Gemini 1.5 Flash
+- **Deployment:** Docker, Docker Compose, Vercel-ready
 
-```
-silip/
-├── app/
-│   ├── api/
-│   │   ├── search/route.ts           # Search API endpoint
-│   │   ├── resources/route.ts        # Resources API
-│   │   ├── section/[id]/route.ts     # Section detail API
-│   │   ├── download/[...path]/       # PDF download endpoint
-│   │   ├── swagger/route.ts          # OpenAPI spec
-│   │   └── api-docs/page.tsx         # Swagger UI
-│   ├── section/[id]/page.tsx         # Section detail page
-│   ├── resources/page.tsx            # Resources page
-│   ├── page.tsx                      # Main search page
-│   └── layout.tsx                    # Root layout
-├── components/ui/                    # Shadcn/UI components
-├── lib/
-│   ├── db.ts                         # Prisma client
-│   ├── redis.ts                      # Redis cache service
-│   ├── search.ts                     # Search logic
-│   ├── swagger.ts                    # OpenAPI specification
-│   ├── document-urls.ts              # URL helpers
-│   └── utils.ts                      # Utilities (highlighting)
-├── prisma/
-│   ├── schema.prisma                 # Database schema
-│   └── seed.ts                       # Tag seeding
-├── scripts/
-│   ├── ingest-dpa-pdf.ts             # DPA ingestion
-│   ├── ingest-irr-pdf.ts             # IRR ingestion
-│   ├── ingest-advisories.ts          # Advisories ingestion
-│   ├── ingest-circulars.ts           # Circulars ingestion
-│   ├── ingest-decisions.ts           # Decisions ingestion
-│   ├── ingest-orders.ts              # Orders ingestion
-│   ├── ingest-resolutions.ts         # Resolutions ingestion
-│   └── lib/                          # Ingestion utilities
-├── data/                             # PDF source files
-└── CHANGELOG.md                      # Version history
-```
+## 📦 What's Included
 
----
-
-## 📡 API Documentation
-
-### Interactive Documentation
-
-Visit [http://localhost:3000/api-docs](http://localhost:3000/api-docs) for full interactive API documentation with Swagger UI.
-
-### Quick Reference
-
-**Search Endpoint:**
-```
-GET /api/search?q=consent&filter=ADVISORY
-```
-
-**Section Detail:**
-```
-GET /api/section/:id
-```
-
-**Resources:**
-```
-GET /api/resources
-```
-
-**Download PDF:**
-```
-GET /api/download/issuances/advisories/Advisory-2024.12.19-Guidelines-on-Artificial-Intelligence-w-SGD.pdf
-```
-
----
+- ✅ 475 legal document sections (DPA 2012, IRR, NPC Issuances)
+- ✅ Full-text search with relevance ranking
+- ✅ 35 privacy-related tags
+- ✅ Automatic section highlighting
+- ✅ API documentation with Swagger UI
+- ✅ Docker infrastructure (PostgreSQL, Redis)
+- ✅ Bootstrap scripts for data ingestion
+- ✅ Production deployment configurations
 
 ## 🔍 How Search Works
 
-### Query Expansion
+1. **Keyword Matching** - OR logic searches for any matching term
+2. **Vector Search** - Cosine similarity on 768-dim embeddings
+3. **Ranking** - Multi-tier scoring:
+   - Exact phrase matches (especially in titles) rank highest
+   - DPA/IRR documents prioritized over issuances
+   - Keyword frequency and document type considered
+   - Stop words filtered out for clean results
+4. **Caching** - Results cached in Redis for instant retrieval
+5. **AI Re-ranking** - Complex queries get Gemini-powered semantic analysis
 
-SILIP automatically expands search queries using 35 predefined legal concept tags:
+## 🎨 Search Examples
 
-```
-User searches: "consent"
-Expanded to: consent OR authorization OR permission OR agreement OR approval
-```
+Try these searches at [http://localhost:3000](http://localhost:3000):
 
-### Highlighting Persistence
+- `"data protection officer"` - Exact phrase matching
+- `"consent"` - Simple keyword search
+- `"How do I register as the DPO?"` - Natural language (triggers AI re-ranking)
+- `"CCTV"` - Technical terms
+- Filter by: DPA, IRR, Advisories, Circulars, Decisions, Orders, Resolutions
 
-Search terms are highlighted throughout the user journey:
+## 📊 API Endpoints
 
-1. User searches "consent" → Results show highlighted snippets
-2. User clicks result → URL includes `?q=consent`
-3. Section page reads query parameter → Highlights all matching terms
-4. Copy link preserves query → Shared links maintain highlighting
-
-### Caching Strategy
-
-- **Cache Key:** `search:{filter}:{query}`
-- **TTL:** 24 hours
-- **Invalidation:** Automatic after ingestion
-- **Performance:** ~10ms cached, ~100ms uncached
-
----
-
-## 🏷️ Tag System
-
-SILIP includes 35 pre-configured privacy concept tags for automatic categorization:
-
-| Category | Tags |
-|----------|------|
-| **Core Concepts** | Consent, Personal Data, Sensitive Personal Information, Privileged Information |
-| **Parties** | Data Subject, Personal Information Controller (PIC), Personal Information Processor (PIP), Data Protection Officer (DPO) |
-| **Rights** | Right to Information, Right to Access, Right to Correction, Right to Erasure, Right to Data Portability, Right to Object, Right to File Complaint |
-| **Security** | Data Breach, Security Incident, Security Measures, Encryption, Anonymization, Pseudonymization |
-| **Processing** | Data Processing, Collection, Retention, Storage, Transfer, Cross-Border Transfer, Outsourcing |
-| **Technology** | CCTV, Biometrics, Cookies, AI/Artificial Intelligence |
-| **Compliance** | Privacy Notice, Privacy Policy, Impact Assessment, Registration, Compliance, Enforcement |
-| **Violations** | Unauthorized Processing, Unauthorized Access, Unauthorized Disclosure, Malicious Disclosure, Data Protection Violations |
-
----
-
-## 🐛 Troubleshooting
-
-### Search Returns No Results
-
-1. Check if data has been ingested:
-   ```bash
-   npx prisma studio
-   # Browse Section and LegalDocument tables
-   ```
-
-2. Clear Redis cache:
-   ```bash
-   redis-cli FLUSHDB
-   ```
-
-3. Re-run ingestion scripts
-
-### PDF Downloads Show Blank Page
-
-This is fixed in v1.0.0. Ensure you're running the latest version and that `app/api/download/[...path]/route.ts` properly awaits params.
-
-### Database Connection Errors
-
-Check your `DATABASE_URL` in `.env`:
-```env
-DATABASE_URL="postgresql://user:password@localhost:5432/silip"
+### Search v2 (Recommended)
+```bash
+GET /api/search/v2?q=query&filter=ALL&page=1&pageSize=20
 ```
 
----
+### Health Check
+```bash
+GET /api/health
+```
+
+### API Documentation
+```bash
+GET /api-docs  # Interactive Swagger UI
+GET /api/swagger  # OpenAPI JSON spec
+```
+
+See [API Documentation](DOCUMENTATION.md#api-documentation) for full details.
 
 ## 🚀 Deployment
 
-### Production Checklist
+### Vercel (Recommended)
+```bash
+vercel deploy --prod
+```
+Requires: Neon/Supabase (PostgreSQL), Upstash (Redis), Gemini API key
 
-- [ ] Set production environment variables
-- [ ] Run database migrations: `npx prisma migrate deploy`
-- [ ] Build application: `npm run build`
-- [ ] Configure Redis connection with TLS
-- [ ] Set up PostgreSQL backup strategy
-- [ ] Configure CDN for PDF downloads (optional)
-- [ ] Enable monitoring and logging
+### Docker / VPS
+```bash
+docker-compose up -d --build
+```
 
-### Recommended Services
+### Portainer
+See [Portainer Deployment Guide](DOCUMENTATION.md#portainer-deployment)
 
-- **Hosting:** Vercel, Railway, or DigitalOcean
-- **Database:** Supabase, Railway, or Neon
-- **Redis:** Upstash or Redis Cloud
-- **Monitoring:** Sentry + Vercel Analytics
+## 📝 Available Commands
 
----
+```bash
+# Development
+npm run dev              # Start dev server
+npm run build            # Production build
+npm run start            # Run production server
+
+# Data Management
+npm run bootstrap        # Ingest all documents
+npm run ingest:dpa       # Ingest DPA sections
+npm run ingest:irr       # Ingest IRR sections
+
+# Database
+npx prisma db push       # Deploy schema
+npx prisma studio       # Visual DB editor
+npm run prisma:seed      # Seed tags
+
+# Testing
+npm run search:test      # Test search functionality
+npm run health           # Check API health
+```
+
+## 🐛 Troubleshooting
+
+Common issues and solutions are documented in [Troubleshooting](DOCUMENTATION.md#troubleshooting).
+
+**Quick fixes:**
+```bash
+# Database connection issues
+docker-compose logs silip-db
+
+# Clear cache
+redis-cli FLUSHDB
+
+# Reset everything
+npm run reset:database
+```
+
+## 🔐 Security & Privacy
+
+- All data processed locally (no external API calls except Gemini for AI features)
+- PostgreSQL with proper authentication
+- Redis connection pooling
+- No personal data stored or transmitted
+- Respects Philippine Data Privacy Act
 
 ## 📄 License
 
 MIT License - see [LICENSE](LICENSE) for details
 
----
-
 ## 🙏 Acknowledgments
 
-- **National Privacy Commission (NPC)** for making Philippine privacy laws publicly accessible at [privacy.gov.ph](https://privacy.gov.ph)
-- **Shadcn/UI** for the beautiful component library
-- **Next.js** team for the amazing framework
-- All contributors to Philippine data privacy advocacy
-
----
+- [National Privacy Commission](https://privacy.gov.ph) - Making Philippine privacy laws accessible
+- [Shadcn/UI](https://ui.shadcn.com) - Beautiful component library
+- [Next.js](https://nextjs.org) - Amazing React framework
 
 ## 📧 Support
 
-For questions, issues, or contributions:
-- Open an issue on [GitHub](https://github.com/tildemark/silip/issues)
-- See [CHANGELOG.md](CHANGELOG.md) for version history
+- **Issues:** [GitHub Issues](https://github.com/tildemark/silip/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/tildemark/silip/discussions)
+- **Docs:** [Complete Documentation](DOCUMENTATION.md)
 
 ---
 
-**Built with ❤️ for Philippine Data Protection Officers**
+## 📈 Project Status
 
-*Making Philippine privacy law accessible to everyone.*
+- ✅ v2.0.0 - Semantic Search & AI Re-ranking (Current)
+- ✅ v1.0.1 - Docker & Deployment fixes
+- ✅ v1.0.0 - Initial release with full-text search
+
+See [CHANGELOG](CHANGELOG.md) for detailed version history.
+
+---
+
+**Made with ❤️ for Philippine privacy advocacy**
