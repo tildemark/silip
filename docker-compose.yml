@@ -57,7 +57,7 @@ services:
       
       # Next.js
       NODE_ENV: production
-      NEXT_PUBLIC_API_URL: https://silip.sanchez.ph/api
+      NEXT_PUBLIC_API_URL: https://silip.sanchez.ph
       NEXT_PUBLIC_BASE_URL: https://silip.sanchez.ph
       
       # Application
