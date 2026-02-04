@@ -188,6 +188,11 @@ DATABASE_SSL=true
 REDIS_PASSWORD="your-redis-password"
 ```
 
+**Important for Production:**
+- `NEXT_PUBLIC_API_URL` must include the full URL with HTTPS scheme (e.g., `https://yourdomain.com/api`)
+- This ensures Swagger UI works correctly without CORS errors
+- The environment variable is used for both the Swagger client and OpenAPI spec server configuration
+
 ### Docker Setup
 
 ```bash
@@ -404,16 +409,37 @@ See [Portainer Deployment](#portainer-deployment) section below.
 
 ### Production Checklist
 
-- [ ] Set production environment variables
-- [ ] Use strong passwords for database
-- [ ] Enable SSL/TLS for Redis
-- [ ] Configure backup strategy
-- [ ] Set up monitoring and logging
-- [ ] Enable Gzip compression
-- [ ] Configure CDN for static assets
-- [ ] Set up error tracking (Sentry)
+**Environment & Configuration:**
+- [ ] Set production environment variables (see `.env.production.example`)
+- [ ] Set `NEXT_PUBLIC_API_URL` to full HTTPS URL (e.g., `https://yourdomain.com/api`)
+- [ ] Use strong passwords for database (`DB_PASSWORD`)
+- [ ] Configure Gemini API key (`GEMINI_API_KEY`) for AI features
+- [ ] Set `NODE_ENV=production`
+
+**Security:**
+- [ ] Enable SSL/TLS for Redis (if external)
+- [ ] Use secure database connections
+- [ ] Configure reverse proxy with HTTPS (Nginx/Caddy)
+- [ ] Review CORS settings if needed
+
+**Data & Files:**
+- [ ] Copy PDF files from GitHub repo to `/app/data/` (see [Copying PDF Files to Production](#copying-pdf-files-to-production))
+- [ ] Verify all issuance HTML files are present in `data/issuances/`
 - [ ] Run database migrations: `npx prisma migrate deploy`
+- [ ] Run initial bootstrap: `npm run bootstrap`
+
+**Infrastructure:**
+- [ ] Configure backup strategy for PostgreSQL
+- [ ] Set up monitoring and logging
+- [ ] Configure CDN for static assets (optional)
+- [ ] Set up error tracking (Sentry, optional)
+
+**Application:**
 - [ ] Build application: `npm run build`
+- [ ] Test health endpoint: `/api/health`
+- [ ] Verify search functionality
+- [ ] Test Swagger UI at `/api-docs`
+- [ ] Verify PDF downloads work
 
 ---
 
@@ -528,6 +554,8 @@ curl "http://localhost:3000/api/search/v2?q=notification&page=2&pageSize=20"
 Returns OpenAPI 3.0 specification in JSON format.
 
 **View Interactive Docs:** `http://localhost:3000/api-docs`
+
+**Note:** The Swagger UI uses the `NEXT_PUBLIC_API_URL` environment variable to construct the proper base URL for API calls. In production environments, ensure this is set to your full HTTPS URL (e.g., `https://yourdomain.com/api`) to avoid CORS errors.
 
 ---
 
@@ -668,6 +696,115 @@ await autoTagSection(section.id, section.content)
      docker-compose exec silip-app npm run bootstrap
      ```
 
+### Copying PDF Files to Production
+
+The application requires PDF source files for document downloads. These are not included in the Docker image and must be copied separately to production.
+
+**Important:** PDF files are stored in Git and need to be manually copied to the container's data volume in production.
+
+#### Method 1: Clone Repository on Production Server
+
+```bash
+# 1. SSH into your production server
+ssh user@your-production-server
+
+# 2. Navigate to a temporary directory
+cd /tmp
+
+# 3. Clone the repository (to get the PDF files)
+git clone https://github.com/tildemark/silip.git
+cd silip
+
+# 4. Find the container's data volume location
+docker volume inspect silip_data_volume
+
+# 5. Copy PDF files to the container's volume
+# Option A: Direct copy to volume mount point
+sudo cp -r data/* /var/lib/docker/volumes/silip_data_volume/_data/
+
+# Option B: Copy into running container
+docker cp data/DPA-2012.pdf silip-app:/app/data/
+docker cp data/dpa-irr-2016.pdf silip-app:/app/data/
+docker cp data/issuances/ silip-app:/app/data/
+
+# 6. Verify files are copied
+docker exec silip-app ls -la /app/data/
+
+# 7. Clean up
+cd /tmp
+rm -rf silip
+```
+
+#### Method 2: Using Docker Volume Mount (Recommended for Portainer)
+
+```bash
+# 1. Create a bind mount in docker-compose.yml or Portainer Stack
+# Add this to the silip-app service:
+volumes:
+  - ./data:/app/data
+
+# 2. Clone repo on the host machine
+git clone https://github.com/tildemark/silip.git
+
+# 3. The data directory will automatically be mounted to the container
+
+# 4. Verify in Portainer:
+#    - Go to Containers → silip-app → Volumes
+#    - Should see /app/data mounted
+```
+
+#### Method 3: Manual Upload via Portainer Console
+
+```bash
+# 1. In Portainer, go to Containers → silip-app → Console
+# 2. Connect using /bin/sh
+# 3. Create directory structure
+mkdir -p /app/data/issuances/{advisories,circulars,decisions,orders,resolutions}
+
+# 4. Upload files using Portainer's file upload feature:
+#    - Go to Container Details → Exec Console
+#    - Use a file transfer method (SCP, SFTP, or Portainer's upload)
+
+# 5. Alternative: Use curl to download from GitHub
+cd /app/data
+curl -o DPA-2012.pdf https://raw.githubusercontent.com/tildemark/silip/main/data/DPA-2012.pdf
+curl -o dpa-irr-2016.pdf https://raw.githubusercontent.com/tildemark/silip/main/data/dpa-irr-2016.pdf
+```
+
+#### Files Required
+
+The following files should be present in `/app/data/`:
+
+```
+data/
+├── DPA-2012.pdf                    # Data Privacy Act of 2012
+├── dpa-irr-2016.pdf                # Implementing Rules and Regulations
+└── issuances/
+    ├── advisories/                 # HTML files for NPC Advisories
+    │   └── [various .html files]
+    ├── circulars/                  # HTML files for NPC Circulars
+    ├── decisions/                  # HTML files for NPC Decisions
+    ├── orders/                     # HTML files for NPC Orders
+    └── resolutions/                # HTML files for NPC Resolutions
+```
+
+**Verification:**
+
+```bash
+# Check if files are accessible
+docker exec silip-app ls -la /app/data/
+docker exec silip-app ls -la /app/data/issuances/advisories/
+
+# Test download API
+curl http://localhost:3000/api/download/DPA-2012.pdf
+```
+
+**Notes:**
+- The `/api/download/[...path]` endpoint serves files from the `data/` directory
+- Path traversal protection is in place for security
+- If files are missing, download endpoints will return 404
+- For v2 deployment, ensure all PDF and HTML files are copied before running bootstrap
+
 ### Nginx Reverse Proxy Configuration
 
 ```nginx
@@ -792,6 +929,27 @@ npm install              # Reinstall all
 npm install --legacy-peer-deps  # If peer dependency issues
 ```
 
+### API Documentation Issues
+
+**Swagger UI CORS Error**
+If you see "URL scheme must be 'http' or 'https' for CORS request" in `/api-docs`:
+
+1. Ensure `NEXT_PUBLIC_API_URL` is set correctly in your environment
+2. For production: Use full HTTPS URL (e.g., `https://yourdomain.com/api`)
+3. For development: Use `http://localhost:3000/api`
+4. Rebuild and restart the application after changing environment variables
+
+```bash
+# Set environment variable
+export NEXT_PUBLIC_API_URL="https://yourdomain.com/api"
+
+# Rebuild
+npm run build
+npm start
+```
+
+The Swagger UI dynamically constructs the API URL from this environment variable to ensure the correct scheme (HTTP/HTTPS) is used.
+
 ### Performance Optimization
 
 **Database optimization**
@@ -816,6 +974,37 @@ redis-cli INFO memory
 # Optimize cache
 redis-cli CONFIG GET maxmemory-policy
 ```
+
+---
+
+## Quick Reference: v2.0 to v2.0.1 Deployment
+
+If you're upgrading from v2.0.0 to v2.0.1 on production:
+
+```bash
+# 1. Pull latest changes
+cd /path/to/silip
+git pull origin main
+
+# 2. Ensure environment variable is set
+# Edit .env.production to include:
+# NEXT_PUBLIC_API_URL=https://yourdomain.com/api
+
+# 3. Rebuild the Docker image
+docker-compose build
+
+# 4. Restart containers
+docker-compose down
+docker-compose up -d
+
+# 5. Verify Swagger UI works without CORS errors
+curl https://yourdomain.com/api-docs
+```
+
+**Key Changes in v2.0.1:**
+- Fixed Swagger UI CORS error by using `NEXT_PUBLIC_API_URL` for proper HTTPS scheme
+- No database changes required
+- No data migration needed
 
 ---
 

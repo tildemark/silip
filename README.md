@@ -205,7 +205,8 @@ MIT License - see [LICENSE](LICENSE) for details
 
 ## 📈 Project Status
 
-- ✅ v2.0.0 - Semantic Search & AI Re-ranking (Current)
+- ✅ v2.0.1 - Swagger UI CORS fix (Current)
+- ✅ v2.0.0 - Semantic Search & AI Re-ranking
 - ✅ v1.0.1 - Docker & Deployment fixes
 - ✅ v1.0.0 - Initial release with full-text search
 

@@ -5,6 +5,78 @@ All notable changes to SILIP (Searchable Interface for Legal Information & Priva
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-02-04
+
+### Fixed
+- **Swagger UI CORS error in production**
+  - Fixed URL scheme mismatch causing "URL scheme must be 'http' or 'https' for CORS request" error
+  - Updated `swagger-client.tsx` to use absolute URL with `NEXT_PUBLIC_API_URL` environment variable
+  - Updated OpenAPI spec to dynamically set server URL from environment
+  - Ensures correct HTTPS scheme in production environments
+
+## [2.0.0] - 2026-02-03
+
+### Added
+- **Semantic Search v2.0** - Hybrid keyword + vector search with advanced ranking
+  - pgvector integration for 768-dimensional embeddings
+  - Cosine similarity-based vector search
+  - Multi-tier ranking system (exact phrase matches, document type priority, keyword frequency)
+  - Stop word filtering for cleaner results
+  - Combined keyword + vector scoring for optimal relevance
+
+- **AI-powered consultant** (`/api/consult`)
+  - Natural language query understanding with Gemini 1.5 Flash
+  - Streaming responses with source citations
+  - Context-aware answers grounded in actual legal documents
+  - Automatic source section linking
+
+- **AI re-ranking for complex queries**
+  - Automatic detection of natural language queries
+  - Gemini-powered semantic analysis and reordering
+  - Improved relevance for conversational searches
+
+- **Enhanced search capabilities**
+  - New `/api/search/v2` endpoint with pagination
+  - Page size configuration (default 20, max 100 results per page)
+  - Total result count and pagination metadata
+  - Backward compatible with original `/api/search` endpoint
+
+- **Database migrations**
+  - Proper Prisma migrations system
+  - Vector extension support for pgvector
+  - Embedding column for semantic search
+
+- **Reindexing script** (`scripts/reindex.ts`)
+  - Generate embeddings for existing sections
+  - Batch processing with progress tracking
+  - Handles large datasets efficiently
+
+### Changed
+- **Updated UI with semantic search**
+  - Badge display for document types (DPA, IRR, Advisory, etc.)
+  - Enhanced result cards with better typography
+  - Loading skeletons for better UX
+  - Pagination controls with page numbers
+
+- **Improved search relevance**
+  - Exact phrase matches (with quotes) prioritized highest
+  - DPA/IRR documents ranked above issuances
+  - Stop words filtered from search terms
+  - Better handling of common legal terms
+
+- **API documentation updates**
+  - Added `/api/consult` endpoint documentation
+  - Added `/api/search/v2` endpoint documentation
+  - Updated OpenAPI spec to version 2.0.0
+  - Enhanced example queries and responses
+
+### Technical
+- Added `@google/generative-ai` package for Gemini integration
+- Upgraded database schema with vector support
+- Added AI utility library (`lib/ai.ts`) for embeddings and consulting
+- Enhanced search library with hybrid search capabilities
+- Added comprehensive debug scripts in `.debug/` folder
+
 ## [1.0.1] - 2026-02-03
 
 ### Fixed
