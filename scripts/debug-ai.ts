@@ -58,9 +58,12 @@ async function main() {
             console.error('Embedding failed:', embError);
         }
 
-        console.log('Testing content generation...');
-        const response = await getConsultantResponse('Test query', mockContext);
-        console.log('Success! Response:', response);
+        console.log('Testing content generation (gemini-2.0-flash-001)...');
+        const apiLib = await import('@google/generative-ai');
+        const genAI = new apiLib.GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-001' });
+        const response = await model.generateContent('Hello, are you working?');
+        console.log('Direct Model Test Success:', response.response.text());
     } catch (error: any) {
         console.error('Error occurred:', error);
         if (error.response) {

@@ -112,7 +112,7 @@ export async function rerankResults(
   }
 
   try {
-    const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash' })
+    const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash-001' })
 
     const candidatesText = candidates
       .map(
@@ -185,7 +185,7 @@ export async function getConsultantResponse(
   context: SectionSnippet[]
 ): Promise<string> {
   try {
-    const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash' })
+    const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash-001' })
 
     const contextText = context
       .map((c) => `[${c.sectionNum} - ${c.title}]\n${c.content}`)
@@ -207,7 +207,10 @@ ${contextText}
 
 Your Response:`
 
-    const response = await retryWithBackoff(() => model.generateContent(prompt), 3, 2000)
+    // Use longer backoff for consultant response (3 retries, start at 5s, 2x backoff -> 5, 10, 20s) - actually need more for 42s
+    // Let's try 4 retries, start 2s. 2, 4, 8, 16. Still not enough.
+    // Try: 3 retries, start 10s. 10, 20, 40. Covers 42s.
+    const response = await retryWithBackoff(() => model.generateContent(prompt), 3, 5000)
     return response.response.text()
   } catch (error) {
     console.error('Error getting consultant response:', error)
