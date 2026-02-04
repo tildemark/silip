@@ -12,8 +12,8 @@ export const openApiSpec: OpenAPIV3.Document = {
   },
   servers: [
     {
-      url: 'http://localhost:3000',
-      description: 'Development server',
+      url: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000',
+      description: process.env.NODE_ENV === 'production' ? 'Production server' : 'Development server',
     },
   ],
   tags: [
