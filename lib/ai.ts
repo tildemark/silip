@@ -112,7 +112,7 @@ export async function rerankResults(
   }
 
   try {
-    const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash-001' })
+    const model = getGenAI().getGenerativeModel({ model: 'gemini-2.5-flash' })
 
     const candidatesText = candidates
       .map(
@@ -185,7 +185,7 @@ export async function getConsultantResponse(
   context: SectionSnippet[]
 ): Promise<string> {
   try {
-    const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash-001' })
+    const model = getGenAI().getGenerativeModel({ model: 'gemini-2.5-flash' })
 
     const contextText = context
       .map((c) => `[${c.sectionNum} - ${c.title}]\n${c.content}`)
