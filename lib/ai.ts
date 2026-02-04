@@ -165,7 +165,7 @@ Return ONLY valid JSON array (no markdown, no extra text):
     return candidates
       .filter((c) => {
         const score = scoreMap.get(c.id) || 0
-        return score >= 6
+        return score >= 4
       })
       .sort((a, b) => (scoreMap.get(b.id) || 0) - (scoreMap.get(a.id) || 0))
   } catch (error) {
@@ -188,17 +188,18 @@ export async function getConsultantResponse(
     const model = getGenAI().getGenerativeModel({ model: 'gemini-2.5-flash' })
 
     const contextText = context
-      .map((c) => `[${c.sectionNum} - ${c.title}]\n${c.content}`)
+      .map((c, i) => `[Source ${i + 1}] - ${c.title} (Section ${c.sectionNum})\n${c.content}`)
       .join('\n\n---\n\n')
 
     const prompt = `You are a Philippine Data Privacy Consultant with deep expertise in the Data Privacy Act (DPA) of 2012 and its Implementing Rules and Regulations (IRR).
 
 CRITICAL REQUIREMENTS:
 1. Answer ONLY using the provided legal context below.
-2. You MUST cite the specific Section number and title for every claim.
-3. If the answer is not found in the context, say: "This information is not covered in the provided sections."
-4. Be concise, clear, and use bullet points when appropriate.
-5. Use professional but accessible language.
+2. The context items are labeled "[Source 1]", "[Source 2]", etc.
+3. You MUST cite the source using the format [Source N] for every claim (e.g., "According to the IRR [Source 1]...").
+4. If the answer is not found in the context, say: "This information is not covered in the provided sections."
+5. Be concise, clear, and use bullet points when appropriate.
+6. Use professional but accessible language.
 
 User Question: "${query}"
 
