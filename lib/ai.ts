@@ -19,8 +19,52 @@ interface RerankResult {
   relevance_score: number
 }
 
-// Initialize Gemini client
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
+// Initialize Gemini client lazily
+let genAI: GoogleGenerativeAI | null = null
+
+function getGenAI() {
+  if (!genAI) {
+    const apiKey = process.env.GEMINI_API_KEY
+    if (!apiKey) {
+      throw new Error('GEMINI_API_KEY environment variable is not set')
+    }
+    genAI = new GoogleGenerativeAI(apiKey)
+  }
+  return genAI as GoogleGenerativeAI
+}
+
+/**
+ * Helper to retry functions with exponential backoff
+ */
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  retries = 3,
+  delay = 1000,
+  backoff = 2
+): Promise<T> {
+  try {
+    return await fn()
+  } catch (error: any) {
+    if (retries === 0) throw error
+
+    // Check if error is retryable (503 Service Unavailable, 429 Too Many Requests)
+    // Note: GoogleGenerativeAIError might wrap the actual status
+    const isRetryable =
+      error.message?.includes('503') ||
+      error.message?.includes('429') ||
+      error.status === 503 ||
+      error.status === 429
+
+    if (!isRetryable && retries < 3) throw error // Only retry non-specific errors once or twice? No, strictly retry clear network/server limits.
+    // Actually, for now, let's retry most errors except 400 (Bad Request) or 403 (Forbidden)
+    const isFatal = error.message?.includes('400') || error.message?.includes('403') || error.status === 400 || error.status === 403
+    if (isFatal) throw error
+
+    console.log(`⚠️  API Request failed. Retrying in ${delay}ms... (Retries left: ${retries})`)
+    await new Promise((resolve) => setTimeout(resolve, delay))
+    return retryWithBackoff(fn, retries - 1, delay * backoff, backoff)
+  }
+}
 
 /**
  * Generate embedding for text using Gemini text-embedding-004
@@ -29,7 +73,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
  */
 export async function generateEmbedding(text: string): Promise<number[]> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'text-embedding-004' })
+    const model = getGenAI().getGenerativeModel({ model: 'text-embedding-004' })
 
     const result = await model.embedContent(text)
     const embedding = result.embedding
@@ -68,7 +112,7 @@ export async function rerankResults(
   }
 
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+    const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash' })
 
     const candidatesText = candidates
       .map(
@@ -141,7 +185,7 @@ export async function getConsultantResponse(
   context: SectionSnippet[]
 ): Promise<string> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+    const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash' })
 
     const contextText = context
       .map((c) => `[${c.sectionNum} - ${c.title}]\n${c.content}`)
@@ -163,7 +207,7 @@ ${contextText}
 
 Your Response:`
 
-    const response = await model.generateContent(prompt)
+    const response = await retryWithBackoff(() => model.generateContent(prompt), 3, 2000)
     return response.response.text()
   } catch (error) {
     console.error('Error getting consultant response:', error)
