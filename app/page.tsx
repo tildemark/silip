@@ -44,7 +44,7 @@ export default function SearchPage() {
       })
 
       const response = await fetch(`/api/search/v2?${params}`)
-      
+
       if (!response.ok) {
         throw new Error('Search failed')
       }
@@ -69,7 +69,7 @@ export default function SearchPage() {
 
   const handleCopyLink = useCallback(async (sectionId: string) => {
     const url = `${window.location.origin}/section/${sectionId}${query ? `?q=${encodeURIComponent(query)}` : ''}`
-    
+
     try {
       await navigator.clipboard.writeText(url)
       setCopiedId(sectionId)
@@ -110,7 +110,7 @@ export default function SearchPage() {
               Philippine Data Privacy Search Engine
             </p>
             <p className="text-sm text-muted-foreground max-w-2xl mx-auto">
-              Search through the Data Privacy Act of 2012, Implementing Rules and Regulations, 
+              Search through the Data Privacy Act of 2012, Implementing Rules and Regulations,
               and NPC Circulars with instant results and intelligent highlighting.
             </p>
           </div>
@@ -139,14 +139,15 @@ export default function SearchPage() {
                   <TabsTrigger value="CIRCULAR">Circulars</TabsTrigger>
                   <TabsTrigger value="ADVISORY">Advisories</TabsTrigger>
                   <TabsTrigger value="ORDER">Orders</TabsTrigger>
+                  <TabsTrigger value="DECISION">Decisions</TabsTrigger>
                   <TabsTrigger value="RESOLUTION">Resolutions</TabsTrigger>
                 </TabsList>
               </Tabs>
             </div>
 
-            <Button 
-              type="submit" 
-              size="lg" 
+            <Button
+              type="submit"
+              size="lg"
               disabled={isLoading || !query.trim()}
               className="min-w-32"
             >
@@ -222,17 +223,17 @@ export default function SearchPage() {
 
                 {results.map((result) => (
                   <Card key={result.id} className="hover:shadow-lg transition-shadow">
-                    <Link 
+                    <Link
                       href={`/section/${result.id}?q=${encodeURIComponent(query)}`}
                       className="block"
                     >
                       <CardHeader>
                         <CardDescription className="flex items-center gap-2 flex-wrap">
-                          <Badge 
+                          <Badge
                             variant={
                               result.documentType === 'DPA' ? 'default' :
-                              result.documentType === 'IRR' ? 'default' :
-                              'secondary'
+                                result.documentType === 'IRR' ? 'default' :
+                                  'secondary'
                             }
                           >
                             {result.documentSubtype || result.documentType}
@@ -243,9 +244,9 @@ export default function SearchPage() {
                           {result.sectionTitle}
                         </CardTitle>
                       </CardHeader>
-                      
+
                       <CardContent>
-                        <div 
+                        <div
                           className="text-sm leading-relaxed text-muted-foreground"
                           dangerouslySetInnerHTML={{ __html: result.highlightedContent }}
                         />
@@ -260,7 +261,7 @@ export default function SearchPage() {
                           </Badge>
                         ))}
                       </div>
-                      
+
                       <Button
                         variant="outline"
                         size="sm"
@@ -294,7 +295,7 @@ export default function SearchPage() {
                     >
                       Previous
                     </Button>
-                    
+
                     <div className="flex gap-1">
                       {Array.from({ length: Math.min(totalPages, 10) }, (_, i) => {
                         const page = i + 1
@@ -321,7 +322,7 @@ export default function SearchPage() {
                         return null
                       })}
                     </div>
-                    
+
                     <Button
                       variant="outline"
                       size="sm"

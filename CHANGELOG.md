@@ -5,6 +5,25 @@ All notable changes to SILIP (Searchable Interface for Legal Information & Priva
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.2] - 2026-02-04
+
+### Fixed
+- **Search Recall Issues**
+  - Fixed ranking logic where generic sections outranked specific title matches (e.g., "Data Breach Notification")
+  - Implemented Strong Title Relevance boost (3+ title term matches override other signals)
+  - Restored missing scoring properties in hybrid search sorting
+  - Fixed citation parsing mismatch in `/api/consult` causing empty responses
+
+- **Build Errors**
+  - Removed temporary debug scripts causing type errors during build
+
+### Added
+- **Decisions Category**
+  - Added "Decisions" tab to search filters for NPC Decisions
+  
+- **Configuration**
+  - Added `GEMINI_MODEL` environment variable support (defaults to `gemini-2.5-flash`)
+
 ## [2.0.1] - 2026-02-04
 
 ### Fixed
@@ -13,7 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated `swagger-client.tsx` to use absolute URL with `NEXT_PUBLIC_API_URL` environment variable
   - Updated OpenAPI spec to dynamically set server URL from environment
   - Ensures correct HTTPS scheme in production environments
-
+  - Ensures correct HTTPS scheme in production environments
+  
 ## [2.0.0] - 2026-02-03
 
 ### Added

@@ -59,9 +59,9 @@ export async function searchLegalDocuments(
 
   // Check cache first (cache all results, paginate from cache)
   const cached = await cacheService.get<{ results: SearchResult[] }>(cacheKey)
-  
+
   let allResults: SearchResult[]
-  
+
   if (cached) {
     allResults = cached.results
   } else {
@@ -70,145 +70,154 @@ export async function searchLegalDocuments(
 
     // Execute search - fetch all matching results
     const sections = await prisma.section.findMany({
-    where: whereClause,
-    include: {
-      document: {
-        select: {
-          id: true,
-          type: true,
-          title: true,
-          alias: true,
-          url: true,
+      where: whereClause,
+      include: {
+        document: {
+          select: {
+            id: true,
+            type: true,
+            title: true,
+            alias: true,
+            url: true,
+          },
+        },
+        tags: {
+          select: {
+            id: true,
+            name: true,
+          },
         },
       },
-      tags: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-    },
-    // No limit - fetch all matching results for pagination
-  })
+      // No limit - fetch all matching results for pagination
+    })
 
     // Transform results with highlighting
     const stopWords = new Set([
-      'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 
-      'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'or', 'that', 
-      'the', 'to', 'was', 'will', 'with', 'do', 'i', 'me', 'my', 'we', 
+      'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
+      'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'or', 'that',
+      'the', 'to', 'was', 'will', 'with', 'do', 'i', 'me', 'my', 'we',
       'you', 'your', 'this', 'these', 'there', 'they', 'them', 'their'
     ])
-    const searchTerms = normalizedQuery
-      .split(/\s+/)
-      .filter((term) => term.length > 0 && !stopWords.has(term.toLowerCase()))
-    
+    const lowerExpandedQuery = getExpandedQueryTerms(query).toLowerCase()
+    const searchTerms = lowerExpandedQuery.split(/\s+/).filter((term) => term.length > 0)
+
     const results: SearchResult[] = sections
-    .map((section) => {
-      // Get expanded query terms including keyword variations
-      const expandedQuery = getExpandedQueryTerms(query)
-      
-      const snippet = extractSnippet(section.content, expandedQuery, 300)
-      // Only highlight non-stop words to avoid yellow highlighting of common words
-      const highlightTerms = expandedQuery
-        .split(/\s+/)
-        .filter((term) => term.length > 0 && !stopWords.has(term.toLowerCase()))
-        .join(' ')
-      const highlightedContent = highlightSearchTerms(snippet, highlightTerms)
+      .map((section) => {
+        // Get expanded query terms including keyword variations
+        const expandedQuery = getExpandedQueryTerms(query)
 
-      // Calculate relevance score
-      const score = calculateRelevanceScore(section, searchTerms, query)
+        const snippet = extractSnippet(section.content, expandedQuery, 300)
+        // Only highlight non-stop words to avoid yellow highlighting of common words
+        const highlightTerms = expandedQuery
+          .split(/\s+/)
+          .filter((term) => term.length > 0 && !stopWords.has(term.toLowerCase()))
+          .join(' ')
+        const highlightedContent = highlightSearchTerms(snippet, highlightTerms)
 
-      return {
-        id: section.id,
-        documentId: section.document.id,
-        documentType: section.document.type,
-        documentSubtype: extractDocumentSubtype(section.document.type, section.document.alias, section.document.title),
-        documentAlias: section.document.alias,
-        documentTitle: section.document.title,
-        sectionNum: section.sectionNum,
-        sectionTitle: section.title,
-        content: section.content,
-        highlightedContent,
-        snippet,
-        tags: section.tags,
-        url: section.document.url,
-        matchedTermCount: score.matchCount,
-        totalOccurrences: score.totalOccurrences,
-        hasExactPhrase: score.hasExactPhrase,
-        hasExactPhraseInTitle: score.hasExactPhraseInTitle,
-        hasKeywordInTitle: score.hasKeywordInTitle,
-      } as SearchResult & { matchedTermCount: number; totalOccurrences: number; hasExactPhrase: boolean; hasExactPhraseInTitle: boolean; hasKeywordInTitle: boolean }
-    })
-    // Sort by: 1) exact phrase in DPA/IRR, 2) exact phrase in others, 3) matched term count, 4) occurrences, 5) doc type, 6) section num
-    .sort((a, b) => {
-      // Prioritize DPA/IRR with exact phrase matches above all others
-      const aIsPrimaryWithExact = (a.documentType === 'DPA' || a.documentType === 'IRR') && a.hasExactPhrase
-      const bIsPrimaryWithExact = (b.documentType === 'DPA' || b.documentType === 'IRR') && b.hasExactPhrase
-      
-      if (aIsPrimaryWithExact !== bIsPrimaryWithExact) {
-        return bIsPrimaryWithExact ? 1 : -1
-      }
-      
-      // If both DPA/IRR with exact phrase, prioritize ones where phrase is in title
-      if (aIsPrimaryWithExact && bIsPrimaryWithExact && a.hasExactPhraseInTitle !== b.hasExactPhraseInTitle) {
-        return b.hasExactPhraseInTitle ? 1 : -1
-      }
-      
-      // Then, exact phrase matches in any document
-      if (b.hasExactPhrase !== a.hasExactPhrase) {
-        return b.hasExactPhrase ? 1 : -1
-      }
-      
-      // If both have exact phrase, prioritize ones where it's in the title
-      if (a.hasExactPhrase && b.hasExactPhrase && a.hasExactPhraseInTitle !== b.hasExactPhraseInTitle) {
-        return b.hasExactPhraseInTitle ? 1 : -1
-      }
-      
-      // Prioritize DPA/IRR over other document types
-      const typeOrder: Record<string, number> = { 'DPA': 0, 'IRR': 1, 'ISSUANCE': 2 }
-      const aTypeOrder = typeOrder[a.documentType] ?? 999
-      const bTypeOrder = typeOrder[b.documentType] ?? 999
-      if (aTypeOrder !== bTypeOrder) {
-        return aTypeOrder - bTypeOrder
-      }
-      
-      // Within same document type (e.g., both IRR), if one has exact phrase and other doesn't, exact phrase wins
-      if (a.documentType === b.documentType && a.hasExactPhrase !== b.hasExactPhrase) {
-        return b.hasExactPhrase ? 1 : -1
-      }
-      
-      // Within same document type with both having exact phrase, prioritize title match
-      if (a.documentType === b.documentType && a.hasExactPhrase && b.hasExactPhrase && a.hasExactPhraseInTitle !== b.hasExactPhraseInTitle) {
-        return b.hasExactPhraseInTitle ? 1 : -1
-      }
-      
-      // Then sort by number of matched terms (more matches = higher priority)
-      if (b.matchedTermCount !== a.matchedTermCount) {
-        return b.matchedTermCount - a.matchedTermCount
-      }
-      
-      // If same term count, prioritize sections where keywords appear in the title
-      if (a.hasKeywordInTitle !== b.hasKeywordInTitle) {
-        return b.hasKeywordInTitle ? 1 : -1
-      }
-      
-      // If tied, sort by total occurrences (frequency) - for more relevant content
-      if (b.totalOccurrences !== a.totalOccurrences) {
-        return b.totalOccurrences - a.totalOccurrences
-      }
-      
-      // Sort by section number (lower numbers first - meaningful sections, not boilerplate Section 1)
-      const aSectionNum = parseInt(a.sectionNum) || 999
-      const bSectionNum = parseInt(b.sectionNum) || 999
-      if (aSectionNum !== bSectionNum) {
-        return aSectionNum - bSectionNum
-      }
-      
-      // Finally by title
-      return a.sectionTitle.localeCompare(b.sectionTitle)
-    })
+        // Calculate relevance score
+        const score = calculateRelevanceScore(section, searchTerms, query)
+
+        return {
+          id: section.id,
+          documentId: section.document.id,
+          documentType: section.document.type,
+          documentSubtype: extractDocumentSubtype(section.document.type, section.document.alias, section.document.title),
+          documentAlias: section.document.alias,
+          documentTitle: section.document.title,
+          sectionNum: section.sectionNum,
+          sectionTitle: section.title,
+          content: section.content,
+          highlightedContent,
+          snippet,
+          tags: section.tags,
+          url: section.document.url,
+          matchedTermCount: score.matchCount,
+          totalOccurrences: score.totalOccurrences,
+          hasExactPhrase: score.hasExactPhrase,
+          hasExactPhraseInTitle: score.hasExactPhraseInTitle,
+          hasKeywordInTitle: score.hasKeywordInTitle,
+        } as SearchResult & { matchedTermCount: number; matchedTitleTermCount: number; totalOccurrences: number; hasExactPhrase: boolean; hasExactPhraseInTitle: boolean; hasKeywordInTitle: boolean }
+      })
+      // Sort by: 1) Strong Title relevance, 2) Exact phrase
+      .sort((a, b) => {
+        // 1. Strong Title Relevance (3+ terms match) - Overrides everything
+        const aTitleHigh = (a.matchedTitleTermCount || 0) >= 3
+        const bTitleHigh = (b.matchedTitleTermCount || 0) >= 3
+        if (aTitleHigh && !bTitleHigh) return -1
+        if (bTitleHigh && !aTitleHigh) return 1
+        if (aTitleHigh && bTitleHigh) {
+          return (b.matchedTitleTermCount || 0) - (a.matchedTitleTermCount || 0)
+        }
+
+        // Prioritize DPA/IRR with exact phrase matches above all others
+        const aIsPrimaryWithExact = (a.documentType === 'DPA' || a.documentType === 'IRR') && a.hasExactPhrase
+        const bIsPrimaryWithExact = (b.documentType === 'DPA' || b.documentType === 'IRR') && b.hasExactPhrase
+
+        if (aIsPrimaryWithExact !== bIsPrimaryWithExact) {
+          return bIsPrimaryWithExact ? 1 : -1
+        }
+
+        // If both DPA/IRR with exact phrase, prioritize ones where phrase is in title
+        if (aIsPrimaryWithExact && bIsPrimaryWithExact && a.hasExactPhraseInTitle !== b.hasExactPhraseInTitle) {
+          return b.hasExactPhraseInTitle ? 1 : -1
+        }
+
+        // Then, exact phrase matches in any document
+        if (b.hasExactPhrase !== a.hasExactPhrase) {
+          return b.hasExactPhrase ? 1 : -1
+        }
+
+        // If both have exact phrase, prioritize ones where it's in the title
+        if (a.hasExactPhrase && b.hasExactPhrase && a.hasExactPhraseInTitle !== b.hasExactPhraseInTitle) {
+          return b.hasExactPhraseInTitle ? 1 : -1
+        }
+
+        // Prioritize DPA/IRR over other document types
+        const typeOrder: Record<string, number> = { 'DPA': 0, 'IRR': 1, 'ISSUANCE': 2 }
+        const aTypeOrder = typeOrder[a.documentType] ?? 999
+        const bTypeOrder = typeOrder[b.documentType] ?? 999
+        if (aTypeOrder !== bTypeOrder) {
+          return aTypeOrder - bTypeOrder
+        }
+
+        // Within same document type (e.g., both IRR), if one has exact phrase and other doesn't, exact phrase wins
+        if (a.documentType === b.documentType && a.hasExactPhrase !== b.hasExactPhrase) {
+          return b.hasExactPhrase ? 1 : -1
+        }
+
+        // Within same document type with both having exact phrase, prioritize title match
+        if (a.documentType === b.documentType && a.hasExactPhrase && b.hasExactPhrase && a.hasExactPhraseInTitle !== b.hasExactPhraseInTitle) {
+          return b.hasExactPhraseInTitle ? 1 : -1
+        }
+
+        // Then sort by number of matched terms (more matches = higher priority)
+        if (b.matchedTermCount !== a.matchedTermCount) {
+          return b.matchedTermCount - a.matchedTermCount
+        }
+
+        // If same term count, prioritize sections where keywords appear in the title
+        if (a.hasKeywordInTitle !== b.hasKeywordInTitle) {
+          return b.hasKeywordInTitle ? 1 : -1
+        }
+
+        // If tied, sort by total occurrences (frequency) - for more relevant content
+        if (b.totalOccurrences !== a.totalOccurrences) {
+          return b.totalOccurrences - a.totalOccurrences
+        }
+
+        // Sort by section number (lower numbers first - meaningful sections, not boilerplate Section 1)
+        const aSectionNum = parseInt(a.sectionNum) || 999
+        const bSectionNum = parseInt(b.sectionNum) || 999
+        if (aSectionNum !== bSectionNum) {
+          return aSectionNum - bSectionNum
+        }
+
+        // Finally by title
+        return a.sectionTitle.localeCompare(b.sectionTitle)
+      })
     // Remove the temporary properties before returning
-    .map(({ matchedTermCount, totalOccurrences, hasExactPhrase, ...result }) => result)
+    // Remove the temporary properties before returning
+    // .map(({ matchedTermCount, totalOccurrences, hasExactPhrase, ...result }) => result)
 
     // Cache all results
     await cacheService.set(cacheKey, { results: results }, 86400)
@@ -243,15 +252,15 @@ function extractDocumentSubtype(documentType: DocType, alias: string, title: str
   if (documentType !== 'ISSUANCE') {
     return undefined
   }
-  
+
   const combined = `${alias} ${title}`.toLowerCase()
-  
+
   if (combined.includes('advisory')) return 'ADVISORY'
   if (combined.includes('circular')) return 'CIRCULAR'
   if (combined.includes('order')) return 'ORDER'
   if (combined.includes('decision')) return 'DECISION'
   if (combined.includes('resolution')) return 'RESOLUTION'
-  
+
   return 'ISSUANCE'
 }
 
@@ -261,14 +270,17 @@ function extractDocumentSubtype(documentType: DocType, alias: string, title: str
 function buildWhereClause(query: string, filter: SearchFilter): Prisma.SectionWhereInput {
   // Stop words to exclude from search
   const stopWords = new Set([
-    'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 
-    'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'or', 'that', 
-    'the', 'to', 'was', 'will', 'with', 'do', 'i', 'me', 'my', 'we', 
+    'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
+    'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'or', 'that',
+    'the', 'to', 'was', 'will', 'with', 'do', 'i', 'me', 'my', 'we',
     'you', 'your', 'this', 'these', 'there', 'they', 'them', 'their'
   ])
-  
-  // Split query into terms for multi-word search, excluding stop words
-  const searchTerms = query
+
+  // Expand query terms to include synonyms
+  const expandedQuery = getExpandedQueryTerms(query)
+
+  // Split expanded query into terms for multi-word search, excluding stop words
+  const searchTerms = expandedQuery
     .split(/\s+/)
     .filter((term) => term.length > 0 && !stopWords.has(term.toLowerCase()))
 
@@ -327,40 +339,42 @@ function buildWhereClause(query: string, filter: SearchFilter): Prisma.SectionWh
  * Calculate relevance score based on term matches and frequency
  * Returns { matchCount, totalOccurrences } for sorting
  */
-function calculateRelevanceScore(section: any, searchTerms: string[], originalQuery: string): { matchCount: number; totalOccurrences: number; hasExactPhrase: boolean; hasExactPhraseInTitle: boolean; hasKeywordInTitle: boolean } {
+function calculateRelevanceScore(section: any, searchTerms: string[], originalQuery: string): { matchCount: number; matchedTitleTermCount: number; totalOccurrences: number; hasExactPhrase: boolean; hasExactPhraseInTitle: boolean; hasKeywordInTitle: boolean } {
   let matchCount = 0
+  let matchedTitleTermCount = 0
   let totalOccurrences = 0
   let hasKeywordInTitle = false
   const contentLower = section.content.toLowerCase()
   const titleLower = section.title.toLowerCase()
-  
+
   // Check for exact phrase match
   const queryPhrase = originalQuery.toLowerCase()
   const hasExactPhrase = contentLower.includes(queryPhrase) || titleLower.includes(queryPhrase)
   const hasExactPhraseInTitle = titleLower.includes(queryPhrase)
-  
+
   for (const term of searchTerms) {
     const termLower = term.toLowerCase()
-    
+
     // Check if term appears at all
     if (contentLower.includes(termLower) || titleLower.includes(termLower)) {
       matchCount++
-      
+
       // Count total occurrences (more occurrences = more relevant)
       const contentMatches = (contentLower.match(new RegExp(`\\b${termLower}\\b`, 'g')) || []).length
       const titleMatches = (titleLower.match(new RegExp(`\\b${termLower}\\b`, 'g')) || []).length
-      
+
       // Title matches are worth more than content matches
       totalOccurrences += titleMatches * 3 + contentMatches
-      
+
       // Track if any search term appears in title
       if (titleMatches > 0) {
         hasKeywordInTitle = true
+        matchedTitleTermCount++
       }
     }
   }
-  
-  return { matchCount, totalOccurrences, hasExactPhrase, hasExactPhraseInTitle, hasKeywordInTitle }
+
+  return { matchCount, matchedTitleTermCount, totalOccurrences, hasExactPhrase, hasExactPhraseInTitle, hasKeywordInTitle }
 }
 
 /**
@@ -439,7 +453,7 @@ export async function getRelatedSections(
 function getExpandedQueryTerms(query: string): string {
   const lowerQuery = query.toLowerCase()
   const terms = lowerQuery.split(/\s+/)
-  
+
   // Keyword variations mapping (matches auto-tagging in ingestion-utils.ts)
   const variations: Record<string, string[]> = {
     'cctv': ['cctv', 'surveillance', 'video surveillance', 'camera', 'monitoring', 'recording', 'closed circuit'],
@@ -478,13 +492,13 @@ function getExpandedQueryTerms(query: string): string {
     'penalty': ['penalty', 'fine', 'sanction', 'liability', 'punishment'],
     'compliance': ['compliance', 'obligation', 'requirement', 'duty'],
   }
-  
+
   // Collect all expanded terms
   const expandedTerms = new Set<string>()
-  
+
   for (const term of terms) {
     expandedTerms.add(term) // Add original term
-    
+
     // Check if this term has variations
     for (const [key, keywords] of Object.entries(variations)) {
       if (term.includes(key) || key.includes(term)) {
@@ -492,7 +506,7 @@ function getExpandedQueryTerms(query: string): string {
       }
     }
   }
-  
+
   return Array.from(expandedTerms).join(' ')
 }
 
@@ -534,13 +548,13 @@ export async function hybridSearch(
         },
       },
     },
-    take: 50,
+    // take: 50, // Fetch all matches to ensure relevant sections aren't cut off by ID sort
   })
 
   // 2. Vector search (if embeddings are available)
   // Note: This requires raw SQL because Prisma doesn't support pgvector operators yet
   let vectorResults: typeof keywordResults = []
-  
+
   try {
     const { generateEmbedding } = await import('./ai')
     const queryEmbedding = await generateEmbedding(query)
@@ -556,11 +570,11 @@ export async function hybridSearch(
     }> = []
 
     if (filter !== 'ALL') {
-      const docTypes = filter === 'DPA' || filter === 'IRR' || filter === 'ISSUANCE' 
-        ? [filter] 
+      const docTypes = filter === 'DPA' || filter === 'IRR' || filter === 'ISSUANCE'
+        ? [filter]
         : filter === 'CIRCULAR' || filter === 'ADVISORY' || filter === 'ORDER' || filter === 'DECISION' || filter === 'RESOLUTION'
-        ? ['ISSUANCE']
-        : []
+          ? ['ISSUANCE']
+          : []
 
       rawVectorResults = await prisma.$queryRaw<typeof rawVectorResults>`
         SELECT 
@@ -615,7 +629,13 @@ export async function hybridSearch(
     vectorResults = []
   }
 
-  // 3. Merge results (deduplicate by ID, prefer keyword matches)
+  // Create map of vector ranks
+  const vectorRankMap = new Map<string, number>()
+  vectorResults.forEach((r, index) => {
+    vectorRankMap.set(r.id, index)
+  })
+
+  // Merge results (deduplicate by ID, prefer keyword matches)
   const mergedMap = new Map<string, (typeof keywordResults)[0]>()
 
   // Add keyword results first (higher priority)
@@ -629,15 +649,16 @@ export async function hybridSearch(
   })
 
   // Convert to SearchResult format
-  const searchTerms = normalizedQuery.split(/\s+/).filter((term) => term.length > 0)
-  
+  const lowerExpandedQuery = getExpandedQueryTerms(query).toLowerCase()
+  const searchTerms = lowerExpandedQuery.split(/\s+/).filter((term) => term.length > 0)
+
   const stopWords = new Set([
-    'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 
-    'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'or', 'that', 
-    'the', 'to', 'was', 'will', 'with', 'do', 'i', 'me', 'my', 'we', 
+    'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
+    'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'or', 'that',
+    'the', 'to', 'was', 'will', 'with', 'do', 'i', 'me', 'my', 'we',
     'you', 'your', 'this', 'these', 'there', 'they', 'them', 'their'
   ])
-  
+
   const sortedResults = Array.from(mergedMap.values())
     .map((section) => {
       const expandedQuery = getExpandedQueryTerms(query)
@@ -666,25 +687,43 @@ export async function hybridSearch(
         tags: section.tags,
         url: section.document.url,
         matchedTermCount: score.matchCount,
+        matchedTitleTermCount: score.matchedTitleTermCount,
         totalOccurrences: score.totalOccurrences,
         hasExactPhrase: score.hasExactPhrase,
+        hasExactPhraseInTitle: score.hasExactPhraseInTitle,
+        hasKeywordInTitle: score.hasKeywordInTitle,
+        vectorRank: vectorRankMap.get(section.id) ?? 999,
       } as any
     })
-    // Sort by: 1) exact phrase in DPA/IRR, 2) exact phrase in others, 3) matched term count, 4) occurrences, 5) doc type, 6) section num
+    // Sort by: 1) Strong Title, 2) Vector Rank, 3) Exact Phrase
     .sort((a, b) => {
+      // 1. Strong Title Relevance (3+ terms match) - Overrides everything
+      const aTitleHigh = (a.matchedTitleTermCount || 0) >= 3
+      const bTitleHigh = (b.matchedTitleTermCount || 0) >= 3
+      if (aTitleHigh && !bTitleHigh) return -1
+      if (bTitleHigh && !aTitleHigh) return 1
+      if (aTitleHigh && bTitleHigh) {
+        return (b.matchedTitleTermCount || 0) - (a.matchedTitleTermCount || 0)
+      }
+
+      // 2. Boost highly relevant vector matches (Top 5 Semantically)
+      if ((a.vectorRank || 999) <= 5 && (b.vectorRank || 999) > 5) return -1
+      if ((b.vectorRank || 999) <= 5 && (a.vectorRank || 999) > 5) return 1
+
+      // Sort by: 1) exact phrase in DPA/IRR, 2) matched title terms, 3) matched total terms
       // Prioritize DPA/IRR with exact phrase matches above all others
       const aIsPrimaryWithExact = (a.documentType === 'DPA' || a.documentType === 'IRR') && a.hasExactPhrase
       const bIsPrimaryWithExact = (b.documentType === 'DPA' || b.documentType === 'IRR') && b.hasExactPhrase
-      
+
       if (aIsPrimaryWithExact !== bIsPrimaryWithExact) {
         return bIsPrimaryWithExact ? 1 : -1
       }
-      
+
       // Then, exact phrase matches in any document
       if (b.hasExactPhrase !== a.hasExactPhrase) {
         return b.hasExactPhrase ? 1 : -1
       }
-      
+
       // Prioritize DPA/IRR over other document types
       const typeOrder: Record<string, number> = { 'DPA': 0, 'IRR': 1, 'ISSUANCE': 2 }
       const aTypeOrder = typeOrder[a.documentType] ?? 999
@@ -692,36 +731,42 @@ export async function hybridSearch(
       if (aTypeOrder !== bTypeOrder) {
         return aTypeOrder - bTypeOrder
       }
-      
+
       // Within same document type (e.g., both IRR), if one has exact phrase and other doesn't, exact phrase wins
       if (a.documentType === b.documentType && a.hasExactPhrase !== b.hasExactPhrase) {
         return b.hasExactPhrase ? 1 : -1
       }
-      
-      // Then sort by number of matched terms (more matches = higher priority)
+
+      // Sort by matched terms in TITLE (prioritize title relevance)
+      const titleTermDiff = (b.matchedTitleTermCount || 0) - (a.matchedTitleTermCount || 0)
+      if (titleTermDiff !== 0) {
+        return titleTermDiff
+      }
+
+      // Then sort by number of matched terms (content + title)
       const termDiff = (b.matchedTermCount || 0) - (a.matchedTermCount || 0)
       if (termDiff !== 0) {
         return termDiff
       }
-      
+
       // If same number of terms matched, sort by total occurrences (frequency) - this is the relevance tiebreaker
       const occurrenceDiff = (b.totalOccurrences || 0) - (a.totalOccurrences || 0)
       if (occurrenceDiff !== 0) {
         return occurrenceDiff
       }
-      
+
       // Sort by section number (lower numbers first - meaningful sections, not boilerplate Section 1)
       const aSectionNum = parseInt(a.sectionNum) || 999
       const bSectionNum = parseInt(b.sectionNum) || 999
       if (aSectionNum !== bSectionNum) {
         return aSectionNum - bSectionNum
       }
-      
+
       // Finally by title
       return a.sectionTitle.localeCompare(b.sectionTitle)
     })
     // Remove the temporary properties before returning
-    .map(({ matchedTermCount, totalOccurrences, hasExactPhrase, ...result }) => result)
+    // .map(({ matchedTermCount, totalOccurrences, hasExactPhrase, ...result }) => result)
     .slice(0, limit)
 
   return sortedResults
