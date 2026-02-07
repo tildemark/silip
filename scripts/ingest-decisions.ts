@@ -7,9 +7,9 @@ import { cacheService } from '../lib/redis'
 import {
   createIngestionLog,
   completeIngestionLog,
-  createSectionWithAutoTag,
-  invalidateCacheAfterIngestion,
   cleanText,
+  createSectionWithEmbedding,
+  invalidateCacheAfterIngestion,
 } from './ingestion-utils'
 
 // Suppress pdf-parse warnings
@@ -38,19 +38,19 @@ async function parseDecisionPDF(filePath: string): Promise<DecisionData | null> 
   try {
     const dataBuffer = await fs.readFile(filePath)
     const data = await pdfParse.default(dataBuffer)
-    
+
     const text = cleanText(data.text)
     const filename = path.basename(filePath, '.pdf')
-    
+
     // Extract decision number from filename
     // Patterns: decision-2024-001.pdf, NPC-DECISION-123.pdf, etc.
     const decisionMatch = filename.match(/decision[_-]?(\d+[a-z]?[-_]?\d*)/i)
     const decisionNumber = decisionMatch ? decisionMatch[1] : filename
-    
+
     // Try to extract title from first few lines
     const lines = text.split('\n').filter(line => line.trim().length > 0)
-    let title = `NPC Decision ${decisionNumber}`
-    
+    let title = `NPC Decision ${decisionNumber} `
+
     // Look for title in first 10 lines
     for (let i = 0; i < Math.min(10, lines.length); i++) {
       const line = lines[i].trim()
@@ -59,7 +59,7 @@ async function parseDecisionPDF(filePath: string): Promise<DecisionData | null> 
         break
       }
     }
-    
+
     return {
       decisionNumber,
       title,
@@ -67,7 +67,7 @@ async function parseDecisionPDF(filePath: string): Promise<DecisionData | null> 
       filename,
     }
   } catch (error) {
-    console.error(`Error parsing PDF ${filePath}:`, error)
+    console.error(`Error parsing PDF ${filePath}: `, error)
     return null
   }
 }
@@ -79,20 +79,20 @@ async function parseDecisionHTML(filePath: string): Promise<DecisionData | null>
   try {
     const html = await fs.readFile(filePath, 'utf-8')
     const $ = cheerio.load(html)
-    
+
     const filename = path.basename(filePath, '.html')
-    
+
     // Extract decision number from filename
     const decisionMatch = filename.match(/decision[_-]?(\d+[a-z]?[-_]?\d*)/i)
     const decisionNumber = decisionMatch ? decisionMatch[1] : filename
-    
+
     // Try to extract title and content
-    let title = $('title').text().trim() || $('h1').first().text().trim() || `NPC Decision ${decisionNumber}`
+    let title = $('title').text().trim() || $('h1').first().text().trim() || `NPC Decision ${decisionNumber} `
     let content = $('body').text().trim()
-    
+
     // Clean up the content
     content = cleanText(content)
-    
+
     return {
       decisionNumber,
       title,
@@ -100,7 +100,7 @@ async function parseDecisionHTML(filePath: string): Promise<DecisionData | null>
       filename,
     }
   } catch (error) {
-    console.error(`Error parsing HTML ${filePath}:`, error)
+    console.error(`Error parsing HTML ${filePath}: `, error)
     return null
   }
 }
@@ -112,12 +112,12 @@ async function ingestDecisions() {
   console.log('🚀 Starting NPC Decisions ingestion...\n')
 
   const decisionsDir = path.join(process.cwd(), 'data', 'issuances', 'decisions')
-  
+
   // Check if directory exists
   try {
     await fs.access(decisionsDir)
   } catch {
-    console.error(`❌ Directory not found: ${decisionsDir}`)
+    console.error(`❌ Directory not found: ${decisionsDir} `)
     console.log('Please create the directory and add decision files.')
     process.exit(1)
   }
@@ -133,7 +133,7 @@ async function ingestDecisions() {
     return
   }
 
-  console.log(`📄 Found ${decisionFiles.length} decision file(s)\n`)
+  console.log(`📄 Found ${decisionFiles.length} decision file(s) \n`)
 
   const log = await createIngestionLog({
     source: 'NPC Decisions (Local Files)',
@@ -144,6 +144,11 @@ async function ingestDecisions() {
       directory: decisionsDir,
     },
   })
+
+  // Load tags once for all sections (optimization)
+  console.log('\n📑 Loading tags for auto-tagging...')
+  const allTags = await prisma.tag.findMany()
+  console.log(`✓ Loaded ${allTags.length} tags`)
 
   let successCount = 0
   let skipCount = 0
@@ -156,7 +161,7 @@ async function ingestDecisions() {
     try {
       // Parse based on file type
       let decisionData: DecisionData | null = null
-      
+
       if (file.endsWith('.pdf')) {
         decisionData = await parseDecisionPDF(filePath)
       } else if (file.endsWith('.html')) {
@@ -203,18 +208,15 @@ async function ingestDecisions() {
 
       console.log(`  ✅ Created document: ${document.title}`)
 
-      if (!existingSection) {
-        // Create the section with auto-tagging
-        await createSectionWithAutoTag({
-          documentId: document.id,
-          sectionNum: '1',
-          title: decisionData.title,
-          content: decisionData.content,
-        })
-        console.log(`  📝 Created section with ${decisionData.content.length} characters`)
-      } else {
-        console.log(`  ⏭️  Section already exists, skipping...`)
-      }
+      // Create the section with embedding and auto-tagging
+      await createSectionWithEmbedding({
+        documentId: document.id,
+        sectionNum: '1',
+        title: decisionData.title,
+        content: decisionData.content,
+        allTags,
+      })
+      console.log(`  📝 Created section with ${decisionData.content.length} characters`)
 
       successCount++
     } catch (error) {
@@ -235,9 +237,9 @@ async function ingestDecisions() {
 
   console.log('\n' + '='.repeat(50))
   console.log('📊 Ingestion Summary:')
-  console.log(`  ✅ Successfully ingested: ${successCount}`)
-  console.log(`  ⏭️  Skipped (duplicates): ${skipCount}`)
-  console.log(`  ❌ Errors: ${errorCount}`)
+  console.log(`  ✅ Successfully ingested: ${successCount} `)
+  console.log(`  ⏭️  Skipped(duplicates): ${skipCount} `)
+  console.log(`  ❌ Errors: ${errorCount} `)
   console.log('='.repeat(50))
 
   await prisma.$disconnect()

@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import Link from 'next/link'
-import { Search, Copy, Check, Loader2, Database } from 'lucide-react'
+import { Search, Copy, Check, Loader2, Database, Sparkles, Info } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -10,7 +10,9 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { SearchFilter, SearchResult } from '@/lib/search'
+import { analyzeQuery, type QueryAnalysis } from '@/lib/query-analysis'
 
 export default function SearchPage() {
   const [query, setQuery] = useState('')
@@ -23,6 +25,11 @@ export default function SearchPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(0)
   const [totalResults, setTotalResults] = useState(0)
+  const [queryAnalysis, setQueryAnalysis] = useState<QueryAnalysis | null>(null)
+  const [aiExplanation, setAiExplanation] = useState<string | null>(null)
+  const [isLoadingAI, setIsLoadingAI] = useState(false)
+  const [showAIButton, setShowAIButton] = useState(false)
+  const [searchMode, setSearchMode] = useState<'legal' | 'bm25'>('legal')
   const pageSize = 20
 
   const performSearch = useCallback(async (page: number = 1) => {
@@ -34,6 +41,12 @@ export default function SearchPage() {
     setError(null)
     setHasSearched(true)
     setCurrentPage(page)
+    setAiExplanation(null) // Reset AI explanation on new search
+
+    // Analyze query to determine if AI would be beneficial
+    const analysis = analyzeQuery(query)
+    setQueryAnalysis(analysis)
+    setShowAIButton(analysis.shouldUseAI || analysis.complexity !== 'simple')
 
     try {
       const params = new URLSearchParams({
@@ -43,7 +56,7 @@ export default function SearchPage() {
         pageSize: pageSize.toString(),
       })
 
-      const response = await fetch(`/api/search/v2?${params}`)
+      const response = await fetch(`/api/search/${searchMode === 'legal' ? 'v2' : 'bm25'}?${params}`)
 
       if (!response.ok) {
         throw new Error('Search failed')
@@ -60,7 +73,7 @@ export default function SearchPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [query, filter, pageSize])
+  }, [query, filter, pageSize, searchMode])
 
   const handleSearch = useCallback((e: React.FormEvent) => {
     e.preventDefault()
@@ -78,6 +91,36 @@ export default function SearchPage() {
       console.error('Failed to copy:', err)
     }
   }, [query])
+
+  const getAIExplanation = useCallback(async () => {
+    if (!query.trim() || results.length === 0) {
+      return
+    }
+
+    setIsLoadingAI(true)
+
+    try {
+      const response = await fetch('/api/consult', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query: query.trim() }),
+      })
+
+      if (!response.ok) {
+        throw new Error('AI explanation failed')
+      }
+
+      const data = await response.json()
+      setAiExplanation(data.answer || 'No explanation available')
+    } catch (err) {
+      console.error('AI explanation error:', err)
+      setError('Failed to get AI explanation. Please try again.')
+    } finally {
+      setIsLoadingAI(false)
+    }
+  }, [query, results])
 
   // Trigger search when filter changes (if there's a query)
   useEffect(() => {
@@ -113,6 +156,51 @@ export default function SearchPage() {
               Search through the Data Privacy Act of 2012, Implementing Rules and Regulations,
               and NPC Circulars with instant results and intelligent highlighting.
             </p>
+
+            {/* Search Mode Toggle */}
+            <div className="flex justify-center pt-4">
+              <div className="inline-flex items-center gap-2 p-1 bg-muted rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => setSearchMode('legal')}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${searchMode === 'legal'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  title="Legal Mode: Prioritizes primary sources (DPA/IRR) over derivative documents"
+                >
+                  <span className="flex items-center gap-2">
+                    <Database className="h-4 w-4" />
+                    Legal Mode
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSearchMode('bm25')}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${searchMode === 'bm25'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  title="Relevance Mode: Pure BM25 ranking based on term frequency and document length"
+                >
+                  <span className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4" />
+                    Relevance Mode
+                  </span>
+                </button>
+              </div>
+            </div>
+            {searchMode === 'bm25' && (
+              <div className="flex justify-center">
+                <Alert className="max-w-2xl">
+                  <Info className="h-4 w-4" />
+                  <AlertDescription className="text-sm">
+                    <strong>Relevance Mode</strong> uses BM25 ranking for pure relevance-based results.
+                    Documents are ranked by term frequency and document length, without legal source prioritization.
+                  </AlertDescription>
+                </Alert>
+              </div>
+            )}
           </div>
 
           {/* Search Box */}
@@ -217,9 +305,74 @@ export default function SearchPage() {
             {/* Results */}
             {!isLoading && !error && results.length > 0 && (
               <div className="space-y-6">
-                <div className="text-sm text-muted-foreground">
-                  Showing {((currentPage - 1) * pageSize) + 1}-{Math.min(currentPage * pageSize, totalResults)} of {totalResults} result{totalResults !== 1 ? 's' : ''} for "{query}"
+                <div className="flex items-center justify-between flex-wrap gap-4">
+                  <div className="text-sm text-muted-foreground">
+                    Showing {((currentPage - 1) * pageSize) + 1}-{Math.min(currentPage * pageSize, totalResults)} of {totalResults} result{totalResults !== 1 ? 's' : ''} for "{query}"
+                  </div>
+
+                  {/* AI Explanation Button - Progressive Enhancement */}
+                  {showAIButton && !aiExplanation && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={getAIExplanation}
+                      disabled={isLoadingAI}
+                      className="gap-2"
+                    >
+                      {isLoadingAI ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Generating...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-4 w-4" />
+                          Get AI Explanation
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </div>
+
+                {/* Query Analysis Info */}
+                {queryAnalysis && queryAnalysis.shouldUseAI && !aiExplanation && (
+                  <Alert>
+                    <Info className="h-4 w-4" />
+                    <AlertDescription>
+                      💡 This looks like a question. Click "Get AI Explanation" above for a synthesized answer with citations.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {/* AI Explanation Card */}
+                {aiExplanation && (
+                  <Card className="border-primary/50 bg-primary/5">
+                    <CardHeader>
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-5 w-5 text-primary" />
+                        <CardTitle>AI Explanation</CardTitle>
+                      </div>
+                      <CardDescription>
+                        Synthesized answer based on relevant legal sections
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div
+                        className="prose prose-sm max-w-none"
+                        dangerouslySetInnerHTML={{ __html: aiExplanation.replace(/\n/g, '<br/>') }}
+                      />
+                    </CardContent>
+                    <CardFooter>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setAiExplanation(null)}
+                      >
+                        Hide Explanation
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                )}
 
                 {results.map((result) => (
                   <Card key={result.id} className="hover:shadow-lg transition-shadow">

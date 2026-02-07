@@ -7,7 +7,7 @@ import { cacheService } from '../lib/redis'
 import {
   createIngestionLog,
   completeIngestionLog,
-  createSectionWithAutoTag,
+  createSectionWithEmbedding,
   invalidateCacheAfterIngestion,
   cleanText,
 } from './ingestion-utils'
@@ -38,19 +38,19 @@ async function parseOrderPDF(filePath: string): Promise<OrderData | null> {
   try {
     const dataBuffer = await fs.readFile(filePath)
     const data = await pdfParse.default(dataBuffer)
-    
+
     const text = cleanText(data.text)
     const filename = path.basename(filePath, '.pdf')
-    
+
     // Extract order number from filename
     // Patterns: order-2024-001.pdf, NPC-ORDER-123.pdf, etc.
     const orderMatch = filename.match(/order[_-]?(\d+[a-z]?[-_]?\d*)/i)
     const orderNumber = orderMatch ? orderMatch[1] : filename
-    
+
     // Try to extract title from first few lines
     const lines = text.split('\n').filter(line => line.trim().length > 0)
     let title = `NPC Order ${orderNumber}`
-    
+
     // Look for title in first 10 lines
     for (let i = 0; i < Math.min(10, lines.length); i++) {
       const line = lines[i].trim()
@@ -59,7 +59,7 @@ async function parseOrderPDF(filePath: string): Promise<OrderData | null> {
         break
       }
     }
-    
+
     return {
       orderNumber,
       title,
@@ -79,20 +79,20 @@ async function parseOrderHTML(filePath: string): Promise<OrderData | null> {
   try {
     const html = await fs.readFile(filePath, 'utf-8')
     const $ = cheerio.load(html)
-    
+
     const filename = path.basename(filePath, '.html')
-    
+
     // Extract order number from filename
     const orderMatch = filename.match(/order[_-]?(\d+[a-z]?[-_]?\d*)/i)
     const orderNumber = orderMatch ? orderMatch[1] : filename
-    
+
     // Try to extract title and content
     let title = $('title').text().trim() || $('h1').first().text().trim() || `NPC Order ${orderNumber}`
     let content = $('body').text().trim()
-    
+
     // Clean up the content
     content = cleanText(content)
-    
+
     return {
       orderNumber,
       title,
@@ -112,7 +112,7 @@ async function ingestOrders() {
   console.log('🚀 Starting NPC Orders ingestion...\n')
 
   const ordersDir = path.join(process.cwd(), 'data', 'issuances', 'orders')
-  
+
   // Check if directory exists
   try {
     await fs.access(ordersDir)
@@ -145,6 +145,11 @@ async function ingestOrders() {
     },
   })
 
+  // Load tags once for all sections (optimization)
+  console.log('\n📑 Loading tags for auto-tagging...')
+  const allTags = await prisma.tag.findMany()
+  console.log(`✓ Loaded ${allTags.length} tags`)
+
   let successCount = 0
   let skipCount = 0
   let errorCount = 0
@@ -156,7 +161,7 @@ async function ingestOrders() {
     try {
       // Parse based on file type
       let orderData: OrderData | null = null
-      
+
       if (file.endsWith('.pdf')) {
         orderData = await parseOrderPDF(filePath)
       } else if (file.endsWith('.html')) {
@@ -204,12 +209,13 @@ async function ingestOrders() {
       console.log(`  ✅ Created document: ${document.title}`)
 
       if (!existingSection) {
-        // Create the section with auto-tagging
-        await createSectionWithAutoTag({
+        // Create the section with embedding and auto-tagging
+        await createSectionWithEmbedding({
           documentId: document.id,
           sectionNum: '1',
           title: orderData.title,
           content: orderData.content,
+          allTags,
         })
         console.log(`  📝 Created section with ${orderData.content.length} characters`)
       } else {

@@ -1,6 +1,7 @@
 import * as cheerio from 'cheerio'
 import { PrismaClient, DocType, IngestionStatus } from '@prisma/client'
 import { cacheService } from '../lib/redis'
+import { generateEmbedding } from '../lib/ai'
 
 const prisma = new PrismaClient()
 
@@ -43,36 +44,44 @@ export async function completeIngestionLog(
 }
 
 /**
- * Auto-tagging utility
+ * Auto-tagging utility (optimized version)
  * 
  * This function analyzes section content and automatically assigns
  * relevant tags based on keyword matching.
+ * 
+ * @param sectionId - Section ID to tag
+ * @param content - Section content
+ * @param title - Section title
+ * @param allTags - Pre-loaded tags array (optional, will load if not provided)
  */
-
 export async function autoTagSection(
   sectionId: string,
   content: string,
-  title: string
+  title: string,
+  allTags?: Array<{ id: string; name: string }>
 ): Promise<void> {
-  const allTags = await prisma.tag.findMany()
-  
+  // Load tags if not provided (for backward compatibility)
+  if (!allTags) {
+    allTags = await prisma.tag.findMany()
+  }
+
   const lowerContent = content.toLowerCase()
   const lowerTitle = title.toLowerCase()
   const matchedTags: string[] = []
 
   for (const tag of allTags) {
     const lowerTagName = tag.name.toLowerCase()
-    
+
     // Check for exact or partial matches in content or title
     // For multi-word tags, check if all words are present
     const tagWords = lowerTagName.split(/\s+/)
-    const allWordsPresent = tagWords.every(word => 
+    const allWordsPresent = tagWords.every(word =>
       lowerContent.includes(word) || lowerTitle.includes(word)
     )
-    
+
     // Also check for the full tag name
     const fullTagPresent = lowerContent.includes(lowerTagName) || lowerTitle.includes(lowerTagName)
-    
+
     // Special handling for common variations
     const variations: Record<string, string[]> = {
       'cctv': ['cctv', 'surveillance', 'video surveillance', 'camera', 'monitoring'],
@@ -89,12 +98,12 @@ export async function autoTagSection(
       'deceptive design': ['dark pattern', 'deceptive design', 'manipulative'],
       'insurance': ['insurance', 'insurer', 'policy holder'],
     }
-    
+
     const tagVariations = variations[lowerTagName] || []
-    const hasVariation = tagVariations.some(variant => 
+    const hasVariation = tagVariations.some(variant =>
       lowerContent.includes(variant) || lowerTitle.includes(variant)
     )
-    
+
     if (fullTagPresent || allWordsPresent || hasVariation) {
       matchedTags.push(tag.id)
     }
@@ -187,7 +196,111 @@ export async function createDocument(data: {
 }
 
 /**
- * Example: Create a section with auto-tagging
+ * Create a section with embedding and auto-tagging
+ */
+export async function createSectionWithEmbedding(data: {
+  documentId: string
+  sectionNum: string
+  title: string
+  content: string
+  allTags?: Array<{ id: string; name: string }>
+}) {
+  // Generate embedding
+  const embeddingText = `${data.title} ${data.content}`.slice(0, 5000)
+  let embedding: number[] | null = null
+
+  try {
+    embedding = await generateEmbedding(embeddingText)
+  } catch (error) {
+    console.warn(`⚠️  Failed to generate embedding: ${error}`)
+  }
+
+  // Create section with embedding using raw SQL
+  const section = await prisma.section.create({
+    data: {
+      documentId: data.documentId,
+      sectionNum: data.sectionNum,
+      title: data.title,
+      content: data.content,
+    },
+  })
+
+  // Update with embedding if generated
+  if (embedding) {
+    await prisma.$executeRaw`
+      UPDATE "Section"
+      SET embedding = ${JSON.stringify(embedding)}::vector
+      WHERE id = ${section.id}
+    `
+  }
+
+  // Auto-tag the section
+  await autoTagSection(section.id, data.content, data.title, data.allTags)
+
+  return section
+}
+
+/**
+ * Batch generate embeddings with rate limiting
+ */
+export async function batchGenerateEmbeddings(
+  sections: Array<{ id: string; text: string }>,
+  batchSize: number = 5,
+  delayMs: number = 1000
+): Promise<Map<string, number[]>> {
+  const embeddings = new Map<string, number[]>()
+
+  for (let i = 0; i < sections.length; i += batchSize) {
+    const batch = sections.slice(i, i + batchSize)
+
+    console.log(`🔄 Processing embeddings batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(sections.length / batchSize)}`)
+
+    const results = await Promise.allSettled(
+      batch.map(async (section) => {
+        const embedding = await generateEmbedding(section.text)
+        return { id: section.id, embedding }
+      })
+    )
+
+    results.forEach((result, idx) => {
+      if (result.status === 'fulfilled') {
+        embeddings.set(result.value.id, result.value.embedding)
+      } else {
+        console.warn(`⚠️  Failed embedding for section ${batch[idx].id}`)
+      }
+    })
+
+    // Rate limiting delay
+    if (i + batchSize < sections.length) {
+      await new Promise(resolve => setTimeout(resolve, delayMs))
+    }
+  }
+
+  return embeddings
+}
+
+/**
+ * Retry utility with exponential backoff
+ */
+export async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  delayMs: number = 1000
+): Promise<T> {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn()
+    } catch (error) {
+      if (i === maxRetries - 1) throw error
+      console.warn(`⚠️  Retry ${i + 1}/${maxRetries} after error:`, error)
+      await new Promise(resolve => setTimeout(resolve, delayMs * Math.pow(2, i)))
+    }
+  }
+  throw new Error('Unreachable')
+}
+
+/**
+ * Legacy function for backward compatibility
  */
 export async function createSectionWithAutoTag(data: {
   documentId: string
@@ -195,12 +308,5 @@ export async function createSectionWithAutoTag(data: {
   title: string
   content: string
 }) {
-  const section = await prisma.section.create({
-    data,
-  })
-
-  // Auto-tag the section
-  await autoTagSection(section.id, data.content, data.title)
-
-  return section
+  return createSectionWithEmbedding(data)
 }

@@ -55,7 +55,7 @@ export async function searchLegalDocuments(
   }
 
   // Generate cache key with version to invalidate old caches after ranking changes
-  const cacheKey = `silip:search:v3:${filter}:${normalizedQuery}:all`
+  const cacheKey = `silip:search:v14:${filter}:${normalizedQuery}:all`
 
   // Check cache first (cache all results, paginate from cache)
   const cached = await cacheService.get<{ results: SearchResult[] }>(cacheKey)
@@ -114,8 +114,8 @@ export async function searchLegalDocuments(
           .join(' ')
         const highlightedContent = highlightSearchTerms(snippet, highlightTerms)
 
-        // Calculate relevance score
-        const score = calculateRelevanceScore(section, searchTerms, query)
+        // Calculate relevance score (pass both original and expanded query for exact phrase detection)
+        const score = calculateRelevanceScore(section, searchTerms, query, expandedQuery)
 
         return {
           id: section.id,
@@ -138,7 +138,7 @@ export async function searchLegalDocuments(
           hasKeywordInTitle: score.hasKeywordInTitle,
         } as SearchResult & { matchedTermCount: number; matchedTitleTermCount: number; totalOccurrences: number; hasExactPhrase: boolean; hasExactPhraseInTitle: boolean; hasKeywordInTitle: boolean }
       })
-      // Sort by: 1) Strong Title relevance, 2) Exact phrase
+      // Sort by: 1) Strong Title relevance, 2) Exact phrase, 3) Document type, 4) Other factors
       .sort((a, b) => {
         // 1. Strong Title Relevance (3+ terms match) - Overrides everything
         const aTitleHigh = (a.matchedTitleTermCount || 0) >= 3
@@ -149,20 +149,40 @@ export async function searchLegalDocuments(
           return (b.matchedTitleTermCount || 0) - (a.matchedTitleTermCount || 0)
         }
 
-        // Prioritize DPA/IRR with exact phrase matches above all others
-        const aIsPrimaryWithExact = (a.documentType === 'DPA' || a.documentType === 'IRR') && a.hasExactPhrase
-        const bIsPrimaryWithExact = (b.documentType === 'DPA' || b.documentType === 'IRR') && b.hasExactPhrase
-
-        if (aIsPrimaryWithExact !== bIsPrimaryWithExact) {
-          return bIsPrimaryWithExact ? 1 : -1
-        }
-
-        // If both DPA/IRR with exact phrase, prioritize ones where phrase is in title
-        if (aIsPrimaryWithExact && bIsPrimaryWithExact && a.hasExactPhraseInTitle !== b.hasExactPhraseInTitle) {
+        // 2. Exact phrase matches in title - highest priority for relevance
+        if (a.hasExactPhraseInTitle !== b.hasExactPhraseInTitle) {
           return b.hasExactPhraseInTitle ? 1 : -1
         }
 
-        // Then, exact phrase matches in any document
+        // 3. Exact phrase matches in content (any document)
+        if (b.hasExactPhrase !== a.hasExactPhrase) {
+          return b.hasExactPhrase ? 1 : -1
+        }
+
+        // 4. Within exact phrase matches, prioritize DPA/IRR over advisories
+        // This ensures IRR with "data protection officer" ranks above advisory with same phrase
+        if (a.hasExactPhrase && b.hasExactPhrase) {
+          const aIsPrimary = a.documentType === 'DPA' || a.documentType === 'IRR'
+          const bIsPrimary = b.documentType === 'DPA' || b.documentType === 'IRR'
+          if (aIsPrimary !== bIsPrimary) {
+            return bIsPrimary ? 1 : -1
+          }
+        }
+
+        // 5. Primary source prioritization for non-exact matches
+        const aIsPrimary = a.documentType === 'DPA' || a.documentType === 'IRR'
+        const bIsPrimary = b.documentType === 'DPA' || b.documentType === 'IRR'
+        if (aIsPrimary !== bIsPrimary) {
+          return bIsPrimary ? 1 : -1
+        }
+
+        // 6. Within same document and same relevance level, sort by section number (ascending)
+        // This ensures Section 26 appears before Section 47 when both match equally
+        if (a.documentId === b.documentId && a.sectionNum !== undefined && b.sectionNum !== undefined) {
+          return Number(a.sectionNum) - Number(b.sectionNum)
+        }
+
+        // 7. If both have exact phrase, prioritize ones where it's in the title
         if (b.hasExactPhrase !== a.hasExactPhrase) {
           return b.hasExactPhrase ? 1 : -1
         }
@@ -279,10 +299,18 @@ function buildWhereClause(query: string, filter: SearchFilter): Prisma.SectionWh
   // Expand query terms to include synonyms
   const expandedQuery = getExpandedQueryTerms(query)
 
-  // Split expanded query into terms for multi-word search, excluding stop words
-  const searchTerms = expandedQuery
+  // IMPORTANT: Search for BOTH original query AND expanded form
+  // This ensures we match both abbreviations (e.g., "DPO") and full terms (e.g., "data protection officer")
+  const combinedQuery = query.toLowerCase() !== expandedQuery.toLowerCase()
+    ? `${query} ${expandedQuery}` // Include both if different
+    : expandedQuery // Use expanded only if same
+
+  // Split combined query into terms for multi-word search, excluding stop words
+  const searchTerms = combinedQuery
     .split(/\s+/)
     .filter((term) => term.length > 0 && !stopWords.has(term.toLowerCase()))
+    // Remove duplicates
+    .filter((term, index, self) => self.findIndex(t => t.toLowerCase() === term.toLowerCase()) === index)
 
   // If no meaningful terms remain after filtering stop words, return empty results
   if (searchTerms.length === 0) {
@@ -339,7 +367,7 @@ function buildWhereClause(query: string, filter: SearchFilter): Prisma.SectionWh
  * Calculate relevance score based on term matches and frequency
  * Returns { matchCount, totalOccurrences } for sorting
  */
-function calculateRelevanceScore(section: any, searchTerms: string[], originalQuery: string): { matchCount: number; matchedTitleTermCount: number; totalOccurrences: number; hasExactPhrase: boolean; hasExactPhraseInTitle: boolean; hasKeywordInTitle: boolean } {
+function calculateRelevanceScore(section: any, searchTerms: string[], originalQuery: string, expandedQuery: string): { matchCount: number; matchedTitleTermCount: number; totalOccurrences: number; hasExactPhrase: boolean; hasExactPhraseInTitle: boolean; hasKeywordInTitle: boolean } {
   let matchCount = 0
   let matchedTitleTermCount = 0
   let totalOccurrences = 0
@@ -347,10 +375,35 @@ function calculateRelevanceScore(section: any, searchTerms: string[], originalQu
   const contentLower = section.content.toLowerCase()
   const titleLower = section.title.toLowerCase()
 
-  // Check for exact phrase match
-  const queryPhrase = originalQuery.toLowerCase()
-  const hasExactPhrase = contentLower.includes(queryPhrase) || titleLower.includes(queryPhrase)
-  const hasExactPhraseInTitle = titleLower.includes(queryPhrase)
+  // Check for exact phrase match in BOTH original query AND expanded query variations
+  // This ensures "dpo" search matches IRR sections containing "data protection officer"
+  const originalPhrase = originalQuery.toLowerCase()
+
+  // Split expanded query into individual phrases and check each one
+  // e.g., "dpo data protection officer privacy officer" -> ["dpo", "data", "protection", "officer", "privacy"]
+  // We need to check for multi-word phrases like "data protection officer"
+  const expandedPhrases = expandedQuery.toLowerCase().split(/\s+/)
+
+  // Check if content/title contains original phrase OR any significant multi-word phrase from expansions
+  // For "dpo", we want to match "data protection officer" as a phrase, not individual words
+  let hasExactPhrase = contentLower.includes(originalPhrase) || titleLower.includes(originalPhrase)
+  let hasExactPhraseInTitle = titleLower.includes(originalPhrase)
+
+  // Also check for common multi-word expansions (3+ words together)
+  // This catches phrases like "data protection officer" when searching for "dpo"
+  if (!hasExactPhrase && expandedPhrases.length >= 3) {
+    // Try to find 3-word phrases in the expanded query
+    for (let i = 0; i <= expandedPhrases.length - 3; i++) {
+      const threeWordPhrase = `${expandedPhrases[i]} ${expandedPhrases[i + 1]} ${expandedPhrases[i + 2]}`
+      if (contentLower.includes(threeWordPhrase) || titleLower.includes(threeWordPhrase)) {
+        hasExactPhrase = true
+        if (titleLower.includes(threeWordPhrase)) {
+          hasExactPhraseInTitle = true
+        }
+        break
+      }
+    }
+  }
 
   for (const term of searchTerms) {
     const termLower = term.toLowerCase()
@@ -476,6 +529,7 @@ function getExpandedQueryTerms(query: string): string {
     'accountability': ['accountability', 'documentation', 'record', 'compliance'],
     'lawful': ['lawful', 'legal basis', 'legitimate', 'justified'],
     'subcontracting': ['subcontracting', 'outsourcing', 'third party', 'contractor'],
+    'dpo': ['dpo', 'data protection officer', 'privacy officer', 'compliance officer'],
     'registration': ['registration', 'dpo', 'data protection officer', 'register'],
     'videoconferencing': ['videoconferencing', 'video conference', 'zoom', 'virtual meeting', 'remote meeting'],
     'election': ['election', 'electoral', 'campaign', 'political', 'voter'],
@@ -671,7 +725,7 @@ export async function hybridSearch(
       const highlightedContent = highlightSearchTerms(snippet, highlightTerms)
 
       // Calculate relevance score based on matched terms and frequency
-      const score = calculateRelevanceScore(section, searchTerms, query)
+      const score = calculateRelevanceScore(section, searchTerms, query, expandedQuery)
 
       return {
         id: section.id,

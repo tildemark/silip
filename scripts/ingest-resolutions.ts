@@ -7,7 +7,7 @@ import { cacheService } from '../lib/redis'
 import {
   createIngestionLog,
   completeIngestionLog,
-  createSectionWithAutoTag,
+  createSectionWithEmbedding,
   invalidateCacheAfterIngestion,
   cleanText,
 } from './ingestion-utils'
@@ -38,19 +38,19 @@ async function parseResolutionPDF(filePath: string): Promise<ResolutionData | nu
   try {
     const dataBuffer = await fs.readFile(filePath)
     const data = await pdfParse.default(dataBuffer)
-    
+
     const text = cleanText(data.text)
     const filename = path.basename(filePath, '.pdf')
-    
+
     // Extract resolution number from filename
     // Patterns: resolution-2024-001.pdf, NPC-RESOLUTION-123.pdf, etc.
     const resolutionMatch = filename.match(/resolution[_-]?(\d+[a-z]?[-_]?\d*)/i)
     const resolutionNumber = resolutionMatch ? resolutionMatch[1] : filename
-    
+
     // Try to extract title from first few lines
     const lines = text.split('\n').filter(line => line.trim().length > 0)
     let title = `NPC Resolution ${resolutionNumber}`
-    
+
     // Look for title in first 10 lines
     for (let i = 0; i < Math.min(10, lines.length); i++) {
       const line = lines[i].trim()
@@ -59,7 +59,7 @@ async function parseResolutionPDF(filePath: string): Promise<ResolutionData | nu
         break
       }
     }
-    
+
     return {
       resolutionNumber,
       title,
@@ -79,20 +79,20 @@ async function parseResolutionHTML(filePath: string): Promise<ResolutionData | n
   try {
     const html = await fs.readFile(filePath, 'utf-8')
     const $ = cheerio.load(html)
-    
+
     const filename = path.basename(filePath, '.html')
-    
+
     // Extract resolution number from filename
     const resolutionMatch = filename.match(/resolution[_-]?(\d+[a-z]?[-_]?\d*)/i)
     const resolutionNumber = resolutionMatch ? resolutionMatch[1] : filename
-    
+
     // Try to extract title and content
     let title = $('title').text().trim() || $('h1').first().text().trim() || `NPC Resolution ${resolutionNumber}`
     let content = $('body').text().trim()
-    
+
     // Clean up the content
     content = cleanText(content)
-    
+
     return {
       resolutionNumber,
       title,
@@ -112,7 +112,7 @@ async function ingestResolutions() {
   console.log('🚀 Starting NPC Resolutions ingestion...\n')
 
   const resolutionsDir = path.join(process.cwd(), 'data', 'issuances', 'resolutions')
-  
+
   // Check if directory exists
   try {
     await fs.access(resolutionsDir)
@@ -145,6 +145,11 @@ async function ingestResolutions() {
     },
   })
 
+  // Load tags once for all sections (optimization)
+  console.log('\n📑 Loading tags for auto-tagging...')
+  const allTags = await prisma.tag.findMany()
+  console.log(`✓ Loaded ${allTags.length} tags`)
+
   let successCount = 0
   let skipCount = 0
   let errorCount = 0
@@ -156,7 +161,7 @@ async function ingestResolutions() {
     try {
       // Parse based on file type
       let resolutionData: ResolutionData | null = null
-      
+
       if (file.endsWith('.pdf')) {
         resolutionData = await parseResolutionPDF(filePath)
       } else if (file.endsWith('.html')) {
@@ -204,12 +209,13 @@ async function ingestResolutions() {
       console.log(`  ✅ Created document: ${document.title}`)
 
       if (!existingSection) {
-        // Create the section with auto-tagging
-        await createSectionWithAutoTag({
+        // Create the section with embedding and auto-tagging
+        await createSectionWithEmbedding({
           documentId: document.id,
           sectionNum: '1',
           title: resolutionData.title,
           content: resolutionData.content,
+          allTags,
         })
         console.log(`  📝 Created section with ${resolutionData.content.length} characters`)
       } else {

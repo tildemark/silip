@@ -193,27 +193,30 @@ export async function getConsultantResponse(
       .map((c, i) => `[Source ${i + 1}] - ${c.title} (Section ${c.sectionNum})\n${c.content}`)
       .join('\n\n---\n\n')
 
-    const prompt = `You are a Philippine Data Privacy Consultant with deep expertise in the Data Privacy Act (DPA) of 2012 and its Implementing Rules and Regulations (IRR).
-
-CRITICAL REQUIREMENTS:
-1. Answer ONLY using the provided legal context below.
-2. The context items are labeled "[Source 1]", "[Source 2]", etc.
-3. You MUST cite the source using the format [Source N] for every claim (e.g., "According to the IRR [Source 1]...").
-4. If the answer is not found in the context, say: "This information is not covered in the provided sections."
-5. Be concise, clear, and use bullet points when appropriate.
-6. Use professional but accessible language.
+    const prompt = `You are a Philippine Data Privacy Consultant. You will be provided with a user question and a set of legal context from the Data Privacy Act (DPA), IRR, and NPC Issuances.
 
 User Question: "${query}"
 
 Legal Context:
 ${contextText}
 
+YOUR TASK:
+Answer the user's question using ONLY the provided Legal Context. Mimic the style of a high-quality search engine AI summary.
+
+RESPONSE FORMAT:
+1. **Direct Answer**: A concise summary paragraph directly answering the question.
+2. **Key Aspects**: A bulleted list of the most important points from the context.
+3. **Best Practices**: A bulleted list of actionable advice or compliance steps (only if supported by the context).
+
+CRITICAL RULES:
+- **STRICT CITATION**: Every single claim, sentence, or bullet point MUST be supported by a citation in the format [Source N] (e.g., "The DPA covers... [Source 1]").
+- **NO HALLUCINATION**: Do not use general knowledge. If the answer is not in the context, state "This information is not found in the search results."
+- **SOURCE INTEGRITY**: The provided context comes from the "data" folder (DPA, IRR, Issuances). Trust these sources.
+
 Your Response:`
 
-    // Use longer backoff for consultant response (3 retries, start at 5s, 2x backoff -> 5, 10, 20s) - actually need more for 42s
-    // Let's try 4 retries, start 2s. 2, 4, 8, 16. Still not enough.
-    // Try: 3 retries, start 10s. 10, 20, 40. Covers 42s.
-    const response = await retryWithBackoff(() => model.generateContent(prompt), 3, 5000)
+    // Use exponential backoff for consultant response (2 retries, start at 1s, 2x backoff -> 1, 2s)
+    const response = await retryWithBackoff(() => model.generateContent(prompt), 2, 1000)
     return response.response.text()
   } catch (error) {
     console.error('Error getting consultant response:', error)

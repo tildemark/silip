@@ -64,6 +64,7 @@ Open [http://localhost:3000](http://localhost:3000)
 
 - **Frontend:** Next.js 16.1.6, TypeScript, TailwindCSS, Shadcn/UI
 - **Backend:** Node.js, Express (via Next.js API routes), Prisma ORM
+- **Search:** BM25 ranking (wink-bm25-text-search), pgvector for embeddings
 - **Database:** PostgreSQL 16, pgvector for embeddings
 - **Cache:** Redis 7
 - **AI/ML:** Google Gemini 1.5 Flash
@@ -82,21 +83,27 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ## 🔍 How Search Works
 
-1. **Keyword Matching** - OR logic searches for any matching term
-2. **Vector Search** - Cosine similarity on 768-dim embeddings
-3. **Ranking** - Multi-tier scoring:
-   - Exact phrase matches (especially in titles) rank highest
-   - DPA/IRR documents prioritized over issuances
-   - Keyword frequency and document type considered
-   - Stop words filtered out for clean results
-4. **Caching** - Results cached in Redis for instant retrieval
-5. **AI Re-ranking** - Complex queries get Gemini-powered semantic analysis
+1. **Query Expansion** - Abbreviations automatically expand (e.g., "dpo" → "data protection officer")
+2. **Keyword Matching** - OR logic searches for any matching term
+3. **Vector Search** - Cosine similarity on 768-dim embeddings
+4. **Advanced Ranking** - 7-tier intelligent scoring:
+   - **Tier 1:** Strong title relevance (3+ matching terms in title)
+   - **Tier 2:** Exact phrase matches in title
+   - **Tier 3:** Exact phrase matches in content
+   - **Tier 4:** Primary sources (DPA/IRR) rank above derivative documents when both have exact matches
+   - **Tier 5:** Primary source prioritization for non-exact matches
+   - **Tier 6:** Section number sorting (earlier sections first within same document)
+   - **Tier 7:** Term frequency, keyword density, and other relevance signals
+5. **Stop Word Filtering** - Common words filtered for cleaner results
+6. **Caching** - Results cached in Redis for instant retrieval
+7. **AI Re-ranking** - Complex queries get Gemini-powered semantic analysis
 
 ## 🎨 Search Examples
 
 Try these searches at [http://localhost:3000](http://localhost:3000):
 
 - `"data protection officer"` - Exact phrase matching
+- `"dpo"` - Abbreviation expansion (finds "data protection officer")
 - `"consent"` - Simple keyword search
 - `"How do I register as the DPO?"` - Natural language (triggers AI re-ranking)
 - `"CCTV"` - Technical terms
@@ -104,10 +111,17 @@ Try these searches at [http://localhost:3000](http://localhost:3000):
 
 ## 📊 API Endpoints
 
-### Search v2 (Recommended)
+### Search v2 (Legal Mode - Recommended)
 ```bash
 GET /api/search/v2?q=query&filter=ALL&page=1&pageSize=20
 ```
+Intelligent ranking with primary source prioritization (DPA/IRR over advisories).
+
+### Search BM25 (Relevance Mode)
+```bash
+GET /api/search/bm25?q=query&filter=ALL&page=1&pageSize=20
+```
+Pure BM25 relevance ranking based on term frequency and document length.
 
 ### Health Check
 ```bash
@@ -205,7 +219,8 @@ MIT License - see [LICENSE](LICENSE) for details
 
 ## 📈 Project Status
 
-- ✅ v2.0.2 - Search Recall Fix & UI Updates (Current)
+- ✅ v2.1.0 - BM25 Search & Ranking Improvements (Current)
+- ✅ v2.0.2 - Search Recall Fix & UI Updates
 - ✅ v2.0.1 - Swagger UI CORS fix
 - ✅ v2.0.0 - Semantic Search & AI Re-ranking
 - ✅ v1.0.1 - Docker & Deployment fixes

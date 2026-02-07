@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import { cacheService } from '../lib/redis'
-import { createIngestionLog, completeIngestionLog, autoTagSection, cleanText } from './ingestion-utils'
+import { createIngestionLog, completeIngestionLog, autoTagSection, cleanText, createSectionWithEmbedding } from './ingestion-utils'
 import * as fs from 'fs'
 import * as path from 'path'
 import pdfParse from 'pdf-parse'
@@ -41,7 +41,7 @@ async function extractTextFromPDF(filePath: string): Promise<string> {
 
 async function fetchHTMLAdvisory(): Promise<ParsedSection> {
   console.log(`📡 Fetching HTML advisory from ${HTML_ADVISORY_URL}...`)
-  
+
   try {
     const response = await fetch(HTML_ADVISORY_URL, {
       headers: {
@@ -49,37 +49,37 @@ async function fetchHTMLAdvisory(): Promise<ParsedSection> {
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       },
     })
-    
+
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)
     }
-    
+
     const html = await response.text()
     const $ = cheerio.load(html)
-    
+
     // Remove unwanted elements
     $('script, style, nav, header, footer, .menu, .navigation, aside, iframe').remove()
-    
+
     // Extract title
-    const title = $('h1, .entry-title, article h1').first().text().trim() || 
-                  'Announcement Regarding Submission of PDBN and ASIR'
-    
+    const title = $('h1, .entry-title, article h1').first().text().trim() ||
+      'Announcement Regarding Submission of PDBN and ASIR'
+
     // Extract main content - prioritize article/entry-content
     let contentEl = $('.entry-content, article .content, .post-content, main article, article').first()
-    
+
     // Remove nested navigation and other unwanted elements from content
     contentEl.find('nav, .menu, .navigation, .sidebar, .widget, .share, .related, .comments').remove()
-    
+
     // Get text and clean
     let content = contentEl.text().trim()
-    
+
     // If content is too short or empty, try alternative selectors
     if (!content || content.length < 100) {
       content = $('main, #main, #content, .content').first().text().trim()
     }
-    
+
     console.log(`✓ Fetched HTML advisory: ${title.slice(0, 60)}... (${content.length} chars)`)
-    
+
     return {
       title: cleanText(title),
       content: cleanText(content),
@@ -92,31 +92,31 @@ async function fetchHTMLAdvisory(): Promise<ParsedSection> {
 
 async function parseAdvisoryHTML(htmlPath: string): Promise<ParsedSection> {
   console.log(`📄 Reading HTML from ${htmlPath}...`)
-  
+
   const html = fs.readFileSync(htmlPath, 'utf-8')
   const $ = cheerio.load(html)
-  
+
   // Remove unwanted elements
   $('script, style, nav, header, footer, .menu, .navigation, aside, iframe').remove()
-  
+
   // Extract title
-  const title = $('h1, .entry-title, article h1, title').first().text().trim() || 
-                'Announcement Regarding Submission of PDBN and ASIR'
-  
+  const title = $('h1, .entry-title, article h1, title').first().text().trim() ||
+    'Announcement Regarding Submission of PDBN and ASIR'
+
   // Extract main content - try multiple selectors
   let contentEl = $('.entry-content, article .content, .post-content, main article, article, #content').first()
-  
+
   // Remove nested unwanted elements from content
   contentEl.find('nav, .menu, .navigation, .sidebar, .widget, .share, .related, .comments').remove()
-  
+
   let content = contentEl.text().trim()
-  
+
   if (!content || content.length < 100) {
     // Fallback: get body content and clean it up
     $('body').find('nav, header, footer, .menu, .navigation, aside').remove()
     content = $('body').text().trim()
   }
-  
+
   return {
     title: cleanText(title),
     content: cleanText(content).slice(0, 10000),
@@ -126,14 +126,14 @@ async function parseAdvisoryHTML(htmlPath: string): Promise<ParsedSection> {
 async function parseAdvisoryPDF(text: string, filename: string): Promise<ParsedSection> {
   // Extract advisory number from filename
   const advisoryMatch = filename.match(/advisory[_-]?(\d+[a-z]?)/i) ||
-                       filename.match(/(\d{4}[-_]\d+)/i)
-  
+    filename.match(/(\d{4}[-_]\d+)/i)
+
   const advisoryNum = advisoryMatch ? advisoryMatch[1] : 'Unknown'
-  
+
   // Try to find title in the document
   const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0)
   let title = `NPC Advisory ${advisoryNum}`
-  
+
   // Look for title patterns in first few lines
   for (let i = 0; i < Math.min(10, lines.length); i++) {
     const line = lines[i]
@@ -142,13 +142,13 @@ async function parseAdvisoryPDF(text: string, filename: string): Promise<ParsedS
       break
     }
   }
-  
+
   // Clean up content
   let content = cleanText(text)
   content = content.replace(/Page \d+ of \d+/gi, '')
   content = content.replace(/\f/g, '')
   content = content.slice(0, 10000) // Limit to 10KB
-  
+
   return {
     title,
     content,
@@ -175,6 +175,11 @@ async function ingestAdvisories() {
   try {
     let totalIngested = 0
 
+    // Load tags once for all sections (optimization)
+    console.log('\n📑 Loading tags for auto-tagging...')
+    const allTags = await prisma.tag.findMany()
+    console.log(`✓ Loaded ${allTags.length} tags`)
+
     // Find all PDF files in advisories directory
     if (!fs.existsSync(ADVISORIES_DIR)) {
       throw new Error(`Advisories directory not found: ${ADVISORIES_DIR}`)
@@ -190,17 +195,17 @@ async function ingestAdvisories() {
     // Ingest PDF advisories
     for (const filename of advisoryPDFs) {
       const filePath = path.join(ADVISORIES_DIR, filename)
-      
+
       console.log(`\n📖 Processing: ${filename}`)
-      
+
       try {
         // Extract text
         const text = await extractTextFromPDF(filePath)
         const parsed = await parseAdvisoryPDF(text, filename)
-        
+
         // Create document alias from filename
         const alias = filename.replace(/\.pdf$/i, '').replace(/[_-]/g, ' ')
-        
+
         // Create or find document
         const doc = await prisma.legalDocument.upsert({
           where: { alias },
@@ -228,19 +233,15 @@ async function ingestAdvisories() {
         })
 
         if (!existing) {
-          // Create section
-          const created = await prisma.section.create({
-            data: {
-              documentId: doc.id,
-              sectionNum: '1',
-              title: parsed.title,
-              content: parsed.content,
-            },
+          // Create section with embedding and auto-tagging
+          await createSectionWithEmbedding({
+            documentId: doc.id,
+            sectionNum: '1',
+            title: parsed.title,
+            content: parsed.content,
+            allTags, // Pass pre-loaded tags
           })
 
-          // Auto-tag
-          await autoTagSection(created.id, created.content, created.title)
-          
           totalIngested++
           console.log(`✅ Ingested: ${parsed.title.slice(0, 60)}...`)
         } else {
@@ -254,16 +255,16 @@ async function ingestAdvisories() {
     // Ingest HTML advisories
     for (const filename of advisoryHTMLs) {
       const filePath = path.join(ADVISORIES_DIR, filename)
-      
+
       console.log(`\n📖 Processing: ${filename}`)
-      
+
       try {
         // Parse HTML
         const parsed = await parseAdvisoryHTML(filePath)
-        
+
         // Create document alias from filename
         const alias = filename.replace(/\.html$/i, '').replace(/[_-]/g, ' ')
-        
+
         // Create or find document
         const doc = await prisma.legalDocument.upsert({
           where: { alias },
@@ -290,19 +291,15 @@ async function ingestAdvisories() {
         })
 
         if (!existing) {
-          // Create section
-          const created = await prisma.section.create({
-            data: {
-              documentId: doc.id,
-              sectionNum: '1',
-              title: parsed.title,
-              content: parsed.content,
-            },
+          // Create section with embedding and auto-tagging
+          await createSectionWithEmbedding({
+            documentId: doc.id,
+            sectionNum: '1',
+            title: parsed.title,
+            content: parsed.content,
+            allTags, // Pass pre-loaded tags
           })
 
-          // Auto-tag
-          await autoTagSection(created.id, created.content, created.title)
-          
           totalIngested++
           console.log(`✅ Ingested: ${parsed.title.slice(0, 60)}...`)
         } else {

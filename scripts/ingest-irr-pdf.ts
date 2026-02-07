@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import { cacheService } from '../lib/redis'
-import { createIngestionLog, completeIngestionLog, autoTagSection, cleanText } from './ingestion-utils'
+import { createIngestionLog, completeIngestionLog, autoTagSection, cleanText, createSectionWithEmbedding } from './ingestion-utils'
 import * as fs from 'fs'
 import * as path from 'path'
 import pdfParse from 'pdf-parse'
@@ -35,7 +35,7 @@ interface ParsedSection {
 
 async function extractTextFromPDF(): Promise<string> {
   console.log(`📄 Reading PDF from ${PDF_PATH}...`)
-  
+
   if (!fs.existsSync(PDF_PATH)) {
     throw new Error(`PDF file not found at: ${PDF_PATH}\n\nPlease download the IRR PDF and place it at: data/dpa-irr-2016.pdf`)
   }
@@ -43,11 +43,11 @@ async function extractTextFromPDF(): Promise<string> {
   try {
     const dataBuffer = fs.readFileSync(PDF_PATH)
     const data = await pdfParse(dataBuffer)
-    
+
     console.log(`✓ PDF parsed successfully`)
     console.log(`  - Pages: ${data.numpages}`)
     console.log(`  - Text length: ${data.text.length} characters`)
-    
+
     return data.text
   } catch (error) {
     console.error('Failed to parse PDF:', error)
@@ -62,32 +62,32 @@ function parseIRRText(text: string): ParsedSection[] {
   // IRR might use different patterns like "Rule", "Section", "Article"
   // Adjust regex based on actual PDF format
   const sectionPattern = /(?:Rule|RULE|Section|SECTION|SEC\.?|Article|ARTICLE)\s+(\d+[a-z]?)\.\s*([^\n]+)/gi
-  
+
   let matches = [...text.matchAll(sectionPattern)]
-  
+
   console.log(`  Found ${matches.length} potential sections`)
 
   for (let i = 0; i < matches.length; i++) {
     const match = matches[i]
     const nextMatch = matches[i + 1]
-    
+
     const sectionNum = match[1].trim()
     const title = cleanText(match[2] || 'Untitled Section')
-    
+
     // Extract content between this section and the next
     const startPos = match.index! + match[0].length
     const endPos = nextMatch ? nextMatch.index! : text.length
-    
+
     let content = text.slice(startPos, endPos).trim()
-    
+
     // Clean up the content
     content = cleanText(content)
-    
+
     // Remove page numbers, headers, footers (common patterns)
     content = content.replace(/Page \d+ of \d+/gi, '')
     content = content.replace(/\f/g, '') // Form feed characters
     content = content.replace(/\s{3,}/g, '\n\n') // Multiple spaces to paragraphs
-    
+
     // Only include sections with substantial content
     if (content.length > 50) {
       sections.push({
@@ -95,7 +95,7 @@ function parseIRRText(text: string): ParsedSection[] {
         title,
         content: content.slice(0, 10000), // Limit to 10KB per section
       })
-      
+
       console.log(`  ✓ Section ${sectionNum}: ${title.slice(0, 60)}...`)
     }
   }
@@ -150,6 +150,11 @@ async function ingestIRRFromPDF() {
 
     console.log(`✅ Created/found document: ${irrDoc.alias}`)
 
+    // Load tags once for all sections (optimization)
+    console.log('\n📑 Loading tags for auto-tagging...')
+    const allTags = await prisma.tag.findMany()
+    console.log(`✓ Loaded ${allTags.length} tags`)
+
     // Ingest each section
     let ingestedCount = 0
     for (const section of parsedSections) {
@@ -166,18 +171,14 @@ async function ingestIRRFromPDF() {
         continue
       }
 
-      // Create section
-      const created = await prisma.section.create({
-        data: {
-          documentId: irrDoc.id,
-          sectionNum: section.sectionNum,
-          title: section.title,
-          content: section.content,
-        },
+      // Create section with embedding and auto-tagging
+      await createSectionWithEmbedding({
+        documentId: irrDoc.id,
+        sectionNum: section.sectionNum,
+        title: section.title,
+        content: section.content,
+        allTags,
       })
-
-      // Auto-tag the section
-      await autoTagSection(created.id, created.content, created.title)
 
       ingestedCount++
       console.log(`✅ Ingested: Section ${section.sectionNum} - ${section.title}`)

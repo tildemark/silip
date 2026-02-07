@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import { cacheService } from '../lib/redis'
-import { createIngestionLog, completeIngestionLog, autoTagSection, cleanText } from './ingestion-utils'
+import { createIngestionLog, completeIngestionLog, autoTagSection, cleanText, createSectionWithEmbedding } from './ingestion-utils'
 import * as fs from 'fs'
 import * as path from 'path'
 import pdfParse from 'pdf-parse'
@@ -39,25 +39,25 @@ async function extractTextFromPDF(filePath: string): Promise<string> {
 
 async function parseCircularHTML(htmlPath: string): Promise<ParsedSection> {
   console.log(`📄 Reading HTML from ${htmlPath}...`)
-  
+
   const html = fs.readFileSync(htmlPath, 'utf-8')
   const $ = cheerio.load(html)
-  
+
   // Extract title
-  const title = $('h1, .entry-title, article h1, title').first().text().trim() || 
-                'NPC Circular'
-  
+  const title = $('h1, .entry-title, article h1, title').first().text().trim() ||
+    'NPC Circular'
+
   // Extract main content - try multiple selectors
   let content = $('.entry-content, article .content, main article, article, .post-content, #content')
     .first()
     .text()
     .trim()
-  
+
   if (!content || content.length < 100) {
     // Fallback: get body content and clean it up
     content = $('body').text().trim()
   }
-  
+
   return {
     title: cleanText(title),
     content: cleanText(content).slice(0, 10000),
@@ -67,14 +67,14 @@ async function parseCircularHTML(htmlPath: string): Promise<ParsedSection> {
 async function parseCircularPDF(text: string, filename: string): Promise<ParsedSection> {
   // Extract circular number from filename
   const circularMatch = filename.match(/circular[_-]?(\d+[a-z]?[-_]?\d*)/i) ||
-                       filename.match(/(\d{2,4}[-_]\d+)/i)
-  
+    filename.match(/(\d{2,4}[-_]\d+)/i)
+
   const circularNum = circularMatch ? circularMatch[1] : 'Unknown'
-  
+
   // Try to find title in the document
   const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0)
   let title = `NPC Circular ${circularNum}`
-  
+
   // Look for title patterns in first few lines
   for (let i = 0; i < Math.min(10, lines.length); i++) {
     const line = lines[i]
@@ -83,13 +83,13 @@ async function parseCircularPDF(text: string, filename: string): Promise<ParsedS
       break
     }
   }
-  
+
   // Clean up content
   let content = cleanText(text)
   content = content.replace(/Page \d+ of \d+/gi, '')
   content = content.replace(/\f/g, '')
   content = content.slice(0, 10000) // Limit to 10KB
-  
+
   return {
     title,
     content,
@@ -116,6 +116,11 @@ async function ingestCirculars() {
   try {
     let totalIngested = 0
 
+    // Load tags once for all sections (optimization)
+    console.log('\n📑 Loading tags for auto-tagging...')
+    const allTags = await prisma.tag.findMany()
+    console.log(`✓ Loaded ${allTags.length} tags`)
+
     // Find all files in circulars directory
     if (!fs.existsSync(CIRCULARS_DIR)) {
       throw new Error(`Circulars directory not found: ${CIRCULARS_DIR}`)
@@ -131,17 +136,17 @@ async function ingestCirculars() {
     // Ingest PDF circulars
     for (const filename of circularPDFs) {
       const filePath = path.join(CIRCULARS_DIR, filename)
-      
+
       console.log(`\n📖 Processing: ${filename}`)
-      
+
       try {
         // Extract text
         const text = await extractTextFromPDF(filePath)
         const parsed = await parseCircularPDF(text, filename)
-        
+
         // Create document alias from filename
         const alias = filename.replace(/\.pdf$/i, '').replace(/[_-]/g, ' ')
-        
+
         // Create or find document
         const doc = await prisma.legalDocument.upsert({
           where: { alias },
@@ -169,19 +174,15 @@ async function ingestCirculars() {
         })
 
         if (!existing) {
-          // Create section
-          const created = await prisma.section.create({
-            data: {
-              documentId: doc.id,
-              sectionNum: '1',
-              title: parsed.title,
-              content: parsed.content,
-            },
+          // Create section with embedding and auto-tagging
+          await createSectionWithEmbedding({
+            documentId: doc.id,
+            sectionNum: '1',
+            title: parsed.title,
+            content: parsed.content,
+            allTags,
           })
 
-          // Auto-tag
-          await autoTagSection(created.id, created.content, created.title)
-          
           totalIngested++
           console.log(`✅ Ingested: ${parsed.title.slice(0, 60)}...`)
         } else {
@@ -195,16 +196,16 @@ async function ingestCirculars() {
     // Ingest HTML circulars
     for (const filename of circularHTMLs) {
       const filePath = path.join(CIRCULARS_DIR, filename)
-      
+
       console.log(`\n📖 Processing: ${filename}`)
-      
+
       try {
         // Parse HTML
         const parsed = await parseCircularHTML(filePath)
-        
+
         // Create document alias from filename
         const alias = filename.replace(/\.html$/i, '').replace(/[_-]/g, ' ')
-        
+
         // Create or find document
         const doc = await prisma.legalDocument.upsert({
           where: { alias },
@@ -232,19 +233,15 @@ async function ingestCirculars() {
         })
 
         if (!existing) {
-          // Create section
-          const created = await prisma.section.create({
-            data: {
-              documentId: doc.id,
-              sectionNum: '1',
-              title: parsed.title,
-              content: parsed.content,
-            },
+          // Create section with embedding and auto-tagging
+          await createSectionWithEmbedding({
+            documentId: doc.id,
+            sectionNum: '1',
+            title: parsed.title,
+            content: parsed.content,
+            allTags,
           })
 
-          // Auto-tag
-          await autoTagSection(created.id, created.content, created.title)
-          
           totalIngested++
           console.log(`✅ Ingested: ${parsed.title.slice(0, 60)}...`)
         } else {

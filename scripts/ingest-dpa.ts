@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import { cacheService } from '../lib/redis'
-import { createIngestionLog, completeIngestionLog, autoTagSection } from './ingestion-utils'
+import { createIngestionLog, completeIngestionLog, autoTagSection, createSectionWithEmbedding } from './ingestion-utils'
 import * as cheerio from 'cheerio'
 
 const prisma = new PrismaClient()
@@ -17,11 +17,11 @@ const DPA_URL = 'https://www.privacy.gov.ph/data-privacy-act/'
 
 async function fetchDPAContent(): Promise<string> {
   console.log(`📡 Fetching content from ${DPA_URL}...`)
-  
+
   try {
     // Add delay to avoid rate limiting
     await new Promise(resolve => setTimeout(resolve, 1000))
-    
+
     const response = await fetch(DPA_URL, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -34,11 +34,11 @@ async function fetchDPAContent(): Promise<string> {
         'Referer': 'https://www.privacy.gov.ph/',
       },
     })
-    
+
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)
     }
-    
+
     const html = await response.text()
     console.log('✓ Content fetched successfully')
     return html
@@ -67,11 +67,11 @@ function parseDPAHTML(html: string): ParsedSection[] {
 
   // This is a template - adjust selectors based on actual website structure
   // You'll need to inspect the actual HTML structure of privacy.gov.ph
-  
+
   // Example parsing logic (adjust to actual structure):
   $('.section-content, .law-section, article').each((_, element) => {
     const $el = $(element)
-    
+
     // Try to extract section number and title
     let sectionNum = ''
     let title = ''
@@ -151,31 +151,49 @@ async function ingestDPA() {
     console.log('✅ Document record created/updated:', dpaDoc.alias)
 
     // Get all tags for auto-tagging
+    console.log('\n📑 Loading tags for auto-tagging...')
     const allTags = await prisma.tag.findMany()
     console.log(`📑 Loaded ${allTags.length} tags for auto-tagging`)
 
-    // Insert sections with auto-tagging
+    // Insert sections with auto-tagging and embeddings
     let insertedCount = 0
     for (const section of parsedSections) {
       const sectionId = `${dpaDoc.id}-${section.sectionNum.toLowerCase().replace(/\s+/g, '-')}`
 
-      const createdSection = await prisma.section.upsert({
-        where: { id: sectionId },
-        update: {
-          title: section.title,
-          content: section.content,
-        },
-        create: {
-          id: sectionId,
+      // Check if section exists
+      const existing = await prisma.section.findUnique({ where: { id: sectionId } })
+
+      if (existing) {
+        // Update existing section
+        await prisma.section.update({
+          where: { id: sectionId },
+          data: {
+            title: section.title,
+            content: section.content,
+          },
+        })
+        await autoTagSection(sectionId, section.content, section.title, allTags)
+      } else {
+        // Create new section with embedding
+        await prisma.section.create({
+          data: {
+            id: sectionId,
+            documentId: dpaDoc.id,
+            sectionNum: section.sectionNum,
+            title: section.title,
+            content: section.content,
+          },
+        })
+
+        // Generate embedding and auto-tag
+        await createSectionWithEmbedding({
           documentId: dpaDoc.id,
           sectionNum: section.sectionNum,
           title: section.title,
           content: section.content,
-        },
-      })
-
-      // Auto-tag the section
-      await autoTagSection(createdSection.id, section.content, section.title)
+          allTags,
+        })
+      }
 
       insertedCount++
       console.log(`✅ [${insertedCount}/${parsedSections.length}] ${section.sectionNum} - ${section.title}`)
@@ -197,7 +215,7 @@ async function ingestDPA() {
 
   } catch (error) {
     console.error('❌ Ingestion failed:', error)
-    
+
     // Mark log as failed
     await completeIngestionLog(
       log.id,
@@ -205,7 +223,7 @@ async function ingestDPA() {
       'FAILED',
       error instanceof Error ? error.message : 'Unknown error'
     )
-    
+
     throw error
   }
 }

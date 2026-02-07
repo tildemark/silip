@@ -5,6 +5,46 @@ All notable changes to SILIP (Searchable Interface for Legal Information & Priva
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-02-07
+
+### Added
+- **BM25 Search Endpoint** (`/api/search/bm25`)
+  - Pure relevance-based ranking using Okapi BM25 algorithm
+  - Alternative to legal-focused search for exploratory queries
+  - Same pagination and filtering as v2 endpoint
+  - Separate caching for optimal performance
+- **Search Mode Toggle** in UI
+  - Switch between "Legal Mode" (v2) and "Relevance Mode" (BM25)
+  - Visual indicators and tooltips explaining each mode
+  - Persistent mode selection during search session
+
+### Improved
+- **Search Ranking Logic** - Major improvements to search result relevance
+  - **Query Expansion**: Abbreviations now automatically expand (e.g., "dpo" → "data protection officer")
+  - **Primary Source Prioritization**: DPA/IRR sections with exact matches now rank above advisories with same matches
+  - **Exact Phrase Detection**: Improved to detect multi-word phrases in expanded queries
+  - **Section Number Sorting**: Earlier sections (e.g., Section 26) now rank before later sections (e.g., Section 47) within same document
+  - **7-Tier Ranking System**:
+    1. Strong title relevance (3+ matching terms in title)
+    2. Exact phrase matches in title
+    3. Exact phrase matches in content
+    4. Primary sources (DPA/IRR) with exact matches rank above derivative documents
+    5. Primary source prioritization for non-exact matches
+    6. Section number sorting (ascending within same document)
+    7. Term frequency and other relevance signals
+
+### Technical
+- Enhanced `calculateRelevanceScore` to check for 3-word phrases in expanded queries
+- Modified `getExpandedQueryTerms` to include "dpo" as a key variation
+- Improved `buildWhereClause` to search for both original and expanded query terms
+- Added section number comparison in sort logic
+- **BM25 Search Infrastructure**: Added Okapi BM25 ranking engine (`lib/bm25.ts`) with server startup warmup
+  - In-memory index for fast retrieval
+  - Configurable parameters (k1=1.2, b=0.75)
+  - Title field weighting (3x importance)
+  - Ready for future hybrid search integration
+- Cache version bumped to v14
+
 ## [2.0.2] - 2026-02-04
 
 ### Fixed

@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
 
     // Rate limiting check (basic implementation)
     const clientIp = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown'
-    
+
     // In production, use Redis for more sophisticated rate limiting
     // For now, we'll just log and proceed
     console.log(`Consult request from ${clientIp}: ${trimmedQuery.substring(0, 100)}...`)
@@ -65,9 +65,9 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Get top 5 sources for context
-    const topSources = sources.slice(0, 5)
-    
+    // Get top 3 sources for context
+    const topSources = sources.slice(0, 3)
+
     // Format context for the consultant
     const consultantContext = topSources.map((source) => ({
       id: source.id,
