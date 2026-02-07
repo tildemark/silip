@@ -193,10 +193,16 @@ Common issues and solutions are documented in [Troubleshooting](DOCUMENTATION.md
 **Quick fixes:**
 ```bash
 # Database connection issues
-docker-compose logs silip-db
+docker logs silip-db
 
-# Clear cache
-redis-cli FLUSHDB
+# Access Database Shell
+docker exec -it silip-db psql -U silip -d silip_db
+
+# Check Redis connection
+docker exec -it silip-redis redis-cli ping
+
+# Clear Redis cache
+docker exec -it silip-redis redis-cli FLUSHDB
 
 # Reset everything
 npm run reset:database

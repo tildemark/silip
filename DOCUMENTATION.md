@@ -847,6 +847,8 @@ docker logs silip-db
 
 # Test connection
 psql postgresql://silip:password@localhost:5432/silip_db
+# OR via Docker:
+docker exec -it silip-db psql -U silip -d silip_db
 
 # Reset database
 npx prisma db push --force-reset
@@ -874,9 +876,13 @@ docker logs silip-redis
 
 # Test connection
 redis-cli -h localhost -p 6379 ping
+# OR via Docker:
+docker exec -it silip-redis redis-cli ping
 
 # Clear cache
 redis-cli FLUSHDB
+# OR via Docker:
+docker exec -it silip-redis redis-cli FLUSHDB
 ```
 
 ### Search Not Working
