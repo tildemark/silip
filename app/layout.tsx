@@ -59,10 +59,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <head>
-        <GoogleAnalytics />
-      </head>
       <body className={inter.className}>
+        <GoogleAnalytics />
         {children}
       </body>
     </html>

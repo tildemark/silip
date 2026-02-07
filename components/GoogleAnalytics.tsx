@@ -1,12 +1,7 @@
 import Script from 'next/script'
 
 export default function GoogleAnalytics() {
-    const gaId = process.env.NEXT_PUBLIC_GA_ID
-
-    // Only render if GA ID is configured
-    if (!gaId) {
-        return null
-    }
+    const gaId = 'G-6TX1WTB91T'
 
     return (
         <>
