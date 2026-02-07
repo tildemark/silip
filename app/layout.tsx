@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import GoogleAnalytics from "@/components/GoogleAnalytics"
+import { Footer } from "@/components/Footer"
 import "./globals.css"
 
 // Force dynamic rendering to ensure environment variables are read at runtime in Docker
@@ -61,7 +62,10 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <GoogleAnalytics />
-        {children}
+        <div className="min-h-screen flex flex-col">
+          {children}
+          <Footer />
+        </div>
       </body>
     </html>
   )

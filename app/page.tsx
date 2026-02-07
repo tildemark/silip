@@ -164,8 +164,8 @@ export default function SearchPage() {
                   type="button"
                   onClick={() => setSearchMode('legal')}
                   className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${searchMode === 'legal'
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
                     }`}
                   title="Legal Mode: Prioritizes primary sources (DPA/IRR) over derivative documents"
                 >
@@ -178,8 +178,8 @@ export default function SearchPage() {
                   type="button"
                   onClick={() => setSearchMode('bm25')}
                   className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${searchMode === 'bm25'
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
                     }`}
                   title="Relevance Mode: Pure BM25 ranking based on term frequency and document length"
                 >
@@ -492,17 +492,7 @@ export default function SearchPage() {
         </div>
       )}
 
-      {/* Footer */}
-      <footer className="border-t py-8 mt-16">
-        <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
-          <p>
-            SILIP - Searchable Interface for Legal Information & Privacy
-          </p>
-          <p className="mt-2">
-            Built with Next.js, PostgreSQL, Redis, and Shadcn/UI
-          </p>
-        </div>
-      </footer>
+
     </div>
   )
 }
