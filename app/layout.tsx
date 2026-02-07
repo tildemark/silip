@@ -24,7 +24,7 @@ export const metadata: Metadata = {
     description: "Search through the Data Privacy Act of 2012, Implementing Rules and Regulations, and NPC Circulars with instant results and AI-powered insights.",
     images: [
       {
-        url: "https://silip.tildemark.com/og-image.png",
+        url: "https://placehold.co/1200x630/0f172a/ffffff.png?text=SILIP:+Philippine+Data+Privacy+Search",
         width: 1200,
         height: 630,
         alt: "SILIP - Philippine Data Privacy Search Engine",
@@ -37,7 +37,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "SILIP - Philippine Data Privacy Search Engine",
     description: "Search through the Data Privacy Act of 2012, Implementing Rules and Regulations, and NPC Circulars with instant results and AI-powered insights.",
-    images: ["https://silip.tildemark.com/og-image.png"],
+    images: ["https://placehold.co/1200x630/0f172a/ffffff.png?text=SILIP:+Philippine+Data+Privacy+Search"],
     creator: "@tildemark",
   },
 
