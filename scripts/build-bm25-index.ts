@@ -17,7 +17,7 @@ async function main() {
         // Get statistics
         const stats = bm25Engine.getStats()
         console.log(`\n📊 Index Statistics:`)
-        console.log(`   - Documents indexed: ${stats.documentCount}`)
+        console.log(`   - Documents indexed: ${stats.documentsIndexed}`)
         console.log(`   - Status: ${stats.initialized ? '✅ Ready' : '❌ Not initialized'}\n`)
 
         // Test queries
