@@ -3,6 +3,9 @@ import { Inter } from "next/font/google"
 import GoogleAnalytics from "@/components/GoogleAnalytics"
 import "./globals.css"
 
+// Force dynamic rendering to ensure environment variables are read at runtime in Docker
+export const dynamic = "force-dynamic"
+
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
