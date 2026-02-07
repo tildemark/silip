@@ -47,7 +47,7 @@ COPY tsconfig.json ./
 # Copy built application from builder
 COPY --from=builder /app/.next ./.next
 # Copy public directory for static assets (e.g. og-image, favicon)
-COPY public ./public
+
 # Create public directory (Next.js may not generate if empty)
 RUN mkdir -p ./public
 
