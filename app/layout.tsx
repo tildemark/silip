@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://silip.sanchez.ph"),
   title: "SILIP - Philippine Data Privacy Search",
   description: "Searchable Interface for Legal Information & Privacy - A powerful search engine for Philippine Data Privacy laws, NPC circulars, and legal documents with AI-powered insights.",
   keywords: ["Data Privacy", "Philippines", "DPA", "NPC", "Legal Search", "Data Privacy Act", "IRR", "GDPR", "Privacy Law"],
