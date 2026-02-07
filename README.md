@@ -8,6 +8,17 @@
 
 A modern, full-featured search engine for Philippine data privacy laws with semantic search, AI re-ranking, and production-ready infrastructure.
 
+## ⚖️ Legal Disclaimer
+
+**Not Official NPC Software:**  
+"Silip" and "Tanod" are private, independent projects and are **not affiliated with, endorsed by, or connected to the National Privacy Commission (NPC)**.
+
+**Data Accuracy:**  
+While we strive to keep our database synchronized with official sources, government issuances (Circulars, Advisories) can change rapidly. We cannot guarantee that the documents hosted here are the absolute latest versions. Always cross-reference with **[privacy.gov.ph](https://privacy.gov.ph)** for critical compliance matters.
+
+**No Warranty:**  
+This software is provided "as is", without warranty of any kind. The developers are not liable for any damages or compliance failures arising from the use of this software.
+
 ## 🎯 Features
 
 - **Semantic Search v2.0** - Hybrid keyword + vector search with advanced ranking

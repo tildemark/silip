@@ -489,6 +489,24 @@ export default function SearchPage() {
               </div>
             )}
           </div>
+
+          {/* Legal Disclaimer */}
+          <div className="mt-16 p-6 bg-muted/30 rounded-lg border border-muted text-sm text-muted-foreground">
+            <h3 className="font-semibold mb-2 flex items-center gap-2">
+              <span className="text-xl">⚖️</span> Legal Disclaimer
+            </h3>
+            <div className="space-y-4">
+              <p>
+                <strong>Not Official NPC Software:</strong> &quot;Silip&quot; and &quot;Tanod&quot; are private, independent projects and are <strong>not affiliated with, endorsed by, or connected to the National Privacy Commission (NPC)</strong>.
+              </p>
+              <p>
+                <strong>Data Accuracy:</strong> While we strive to keep our database synchronized with official sources, government issuances (Circulars, Advisories) can change rapidly. We cannot guarantee that the documents hosted here are the absolute latest versions. Always cross-reference with <strong><a href="https://privacy.gov.ph" target="_blank" rel="noopener noreferrer" className="underline hover:text-primary">privacy.gov.ph</a></strong> for critical compliance matters.
+              </p>
+              <p>
+                <strong>No Warranty:</strong> This software is provided &quot;as is&quot;, without warranty of any kind. The developers are not liable for any damages or compliance failures arising from the use of this software.
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
