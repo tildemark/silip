@@ -24,6 +24,8 @@ interface Section {
     type: string
     subType?: string | null
     url: string | null
+    checksum: string | null
+    lastSync: string // Date string from API
   }
   tags: Array<{
     id: string
@@ -41,14 +43,14 @@ export default function SectionPage() {
   const [section, setSection] = useState<Section | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  
+
   const query = searchParams.get('q') || ''
-  
+
   // Filter stop words from query for highlighting
   const stopWords = new Set([
-    'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 
-    'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'or', 'that', 
-    'the', 'to', 'was', 'will', 'with', 'do', 'i', 'me', 'my', 'we', 
+    'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
+    'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'or', 'that',
+    'the', 'to', 'was', 'will', 'with', 'do', 'i', 'me', 'my', 'we',
     'you', 'your', 'this', 'these', 'there', 'they', 'them', 'their'
   ])
   const highlightQuery = query
@@ -60,7 +62,7 @@ export default function SectionPage() {
     async function fetchSection() {
       try {
         const response = await fetch(`/api/section/${params.id}`)
-        
+
         if (!response.ok) {
           if (response.status === 404) {
             setError('Section not found')
@@ -115,7 +117,7 @@ export default function SectionPage() {
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back
             </Button>
-            
+
             <Card>
               <CardHeader>
                 <CardTitle className="text-destructive">Error</CardTitle>
@@ -169,10 +171,10 @@ export default function SectionPage() {
                   {section.content.split('\n\n').map((paragraph, idx) => {
                     const trimmed = paragraph.trim()
                     if (!trimmed) return null
-                    
+
                     // Apply highlighting if query exists
                     const highlighted = highlightQuery ? highlightSearchTerms(trimmed, highlightQuery) : trimmed
-                    
+
                     // Check if it's a list item
                     if (trimmed.match(/^[\(（]?[a-z0-9]+[\)）]/i) || trimmed.match(/^[\(（]?[ivxlcdm]+[\)）]/i) || trimmed.match(/^[•·\-\*]/)) {
                       return (
@@ -190,7 +192,7 @@ export default function SectionPage() {
                         </div>
                       )
                     }
-                    
+
                     // Regular paragraph
                     return (
                       <p key={idx} className="text-justify" dangerouslySetInnerHTML={{ __html: highlighted }} />
@@ -232,23 +234,23 @@ export default function SectionPage() {
                           Download PDF
                         </Button>
                       </Link>
-                      <Link 
+                      <Link
                         href={
-                          section.document.type === 'DPA' 
+                          section.document.type === 'DPA'
                             ? 'https://privacy.gov.ph/data-privacy-act/'
                             : section.document.type === 'IRR'
-                            ? 'https://privacy.gov.ph/implementing-rules-regulations-data-privacy-act-2012/#1'
-                            : section.document.type === 'ISSUANCE' && section.document.subType
-                            ? {
-                                'ADVISORY': 'https://privacy.gov.ph/pips-and-pics/advisories-circulars/',
-                                'CIRCULAR': 'https://privacy.gov.ph/pips-and-pics/advisories-circulars/',
-                                'DECISION': 'https://privacy.gov.ph/decisions-2/',
-                                'ORDER': 'https://privacy.gov.ph/orders-2/',
-                                'RESOLUTION': 'https://privacy.gov.ph/resolutions/',
-                              }[section.document.subType] || 'https://privacy.gov.ph/'
-                            : 'https://privacy.gov.ph/'
+                              ? 'https://privacy.gov.ph/implementing-rules-regulations-data-privacy-act-2012/#1'
+                              : section.document.type === 'ISSUANCE' && section.document.subType
+                                ? {
+                                  'ADVISORY': 'https://privacy.gov.ph/pips-and-pics/advisories-circulars/',
+                                  'CIRCULAR': 'https://privacy.gov.ph/pips-and-pics/advisories-circulars/',
+                                  'DECISION': 'https://privacy.gov.ph/decisions-2/',
+                                  'ORDER': 'https://privacy.gov.ph/orders-2/',
+                                  'RESOLUTION': 'https://privacy.gov.ph/resolutions/',
+                                }[section.document.subType] || 'https://privacy.gov.ph/'
+                                : 'https://privacy.gov.ph/'
                         }
-                        target="_blank" 
+                        target="_blank"
                         rel="noopener noreferrer"
                       >
                         <Button variant="ghost" size="sm">
@@ -257,6 +259,25 @@ export default function SectionPage() {
                         </Button>
                       </Link>
                     </div>
+                  </div>
+
+                  {/* Integrity Badges */}
+                  <div className="mt-4 p-4 bg-muted/50 rounded-lg border text-sm space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="bg-background">Last Sync</Badge>
+                      <span className="text-muted-foreground">
+                        File retrieved from NPC on: <strong>{new Date(section.document.lastSync || section.updatedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</strong>. Check official source for updates.
+                      </span>
+                    </div>
+                    {/* Checksum Display */}
+                    {section.document.checksum && (
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="bg-background font-mono">SHA-256</Badge>
+                        <span className="font-mono text-xs text-muted-foreground break-all">
+                          {section.document.checksum}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </>
               )}

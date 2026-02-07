@@ -10,6 +10,7 @@ import {
   createSectionWithEmbedding,
   invalidateCacheAfterIngestion,
   cleanText,
+  calculateChecksum,
 } from './ingestion-utils'
 
 // Suppress pdf-parse warnings
@@ -174,6 +175,15 @@ async function ingestResolutions() {
         continue
       }
 
+      // Calculate checksum for both PDF and HTML if possible, or skip for HTML if no file buffer
+      let checksum = undefined
+      try {
+        const fileBuffer = await fs.readFile(filePath)
+        checksum = calculateChecksum(fileBuffer)
+      } catch (e) {
+        // ignore
+      }
+
       // Create or update the legal document
       const document = await prisma.legalDocument.upsert({
         where: { alias: resolutionData.filename },
@@ -182,6 +192,8 @@ async function ingestResolutions() {
           subType: 'RESOLUTION',
           title: resolutionData.title,
           url: `/api/download/issuances/resolutions/${file}`,
+          checksum,
+          lastSync: new Date(),
         },
         create: {
           type: 'ISSUANCE',
@@ -189,6 +201,8 @@ async function ingestResolutions() {
           title: resolutionData.title,
           alias: resolutionData.filename,
           url: `/api/download/issuances/resolutions/${file}`,
+          checksum,
+          lastSync: new Date(),
         },
       })
 

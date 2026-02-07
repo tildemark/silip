@@ -24,6 +24,8 @@ model LegalDocument {
   sections    Section[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
+  lastSync    DateTime     @default(now()) // When the file was retrieved/synced
+  checksum    String?      // SHA-256 hash for integrity verification
 
   @@index([type])
   @@index([subType])

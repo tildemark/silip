@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import { cacheService } from '../lib/redis'
-import { createIngestionLog, completeIngestionLog, autoTagSection, cleanText, createSectionWithEmbedding } from './ingestion-utils'
+import { createIngestionLog, completeIngestionLog, autoTagSection, cleanText, createSectionWithEmbedding, calculateChecksum } from './ingestion-utils'
 import * as fs from 'fs'
 import * as path from 'path'
 import pdfParse from 'pdf-parse'
@@ -206,6 +206,10 @@ async function ingestAdvisories() {
         // Create document alias from filename
         const alias = filename.replace(/\.pdf$/i, '').replace(/[_-]/g, ' ')
 
+        // Calculate checksum
+        const fileBuffer = fs.readFileSync(filePath)
+        const checksum = calculateChecksum(fileBuffer)
+
         // Create or find document
         const doc = await prisma.legalDocument.upsert({
           where: { alias },
@@ -214,6 +218,8 @@ async function ingestAdvisories() {
             type: 'ISSUANCE',
             subType: 'ADVISORY',
             url: `/api/download/issuances/advisories/${filename}`,
+            checksum,
+            lastSync: new Date(),
           },
           create: {
             title: parsed.title,
@@ -221,6 +227,8 @@ async function ingestAdvisories() {
             type: 'ISSUANCE',
             subType: 'ADVISORY',
             url: `/api/download/issuances/advisories/${filename}`,
+            checksum,
+            lastSync: new Date(),
           },
         })
 

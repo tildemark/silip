@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import { cacheService } from '../lib/redis'
-import { createIngestionLog, completeIngestionLog, autoTagSection, cleanText, createSectionWithEmbedding } from './ingestion-utils'
+import { createIngestionLog, completeIngestionLog, autoTagSection, cleanText, createSectionWithEmbedding, calculateChecksum } from './ingestion-utils'
 import * as fs from 'fs'
 import * as path from 'path'
 import pdfParse from 'pdf-parse'
@@ -132,6 +132,10 @@ async function ingestIRRFromPDF() {
       throw new Error('No sections found in PDF. The PDF format may need custom parsing.')
     }
 
+    // Calculate checksum
+    const fileBuffer = fs.readFileSync(PDF_PATH)
+    const checksum = calculateChecksum(fileBuffer)
+
     // Find or create the IRR document
     const irrDoc = await prisma.legalDocument.upsert({
       where: { alias: 'IRR 2016' },
@@ -139,12 +143,16 @@ async function ingestIRRFromPDF() {
         title: 'Implementing Rules and Regulations of 2016',
         type: 'IRR',
         url: '/api/download/dpa-irr/irr-2016.pdf',
+        checksum,
+        lastSync: new Date(),
       },
       create: {
         title: 'Implementing Rules and Regulations of 2016',
         alias: 'IRR 2016',
         type: 'IRR',
         url: '/api/download/dpa-irr/irr-2016.pdf',
+        checksum,
+        lastSync: new Date(),
       },
     })
 

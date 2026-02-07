@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import { cacheService } from '../lib/redis'
-import { createIngestionLog, completeIngestionLog, autoTagSection, cleanText } from './ingestion-utils'
+import { createIngestionLog, completeIngestionLog, autoTagSection, cleanText, calculateChecksum } from './ingestion-utils'
 import * as fs from 'fs'
 import * as path from 'path'
 import pdfParse from 'pdf-parse'
@@ -35,7 +35,7 @@ interface ParsedSection {
 
 async function extractTextFromPDF(): Promise<string> {
   console.log(`📄 Reading PDF from ${PDF_PATH}...`)
-  
+
   if (!fs.existsSync(PDF_PATH)) {
     throw new Error(`PDF file not found at: ${PDF_PATH}\n\nPlease download the DPA PDF and place it at: data/dpa-2012.pdf`)
   }
@@ -43,11 +43,11 @@ async function extractTextFromPDF(): Promise<string> {
   try {
     const dataBuffer = fs.readFileSync(PDF_PATH)
     const data = await pdfParse(dataBuffer)
-    
+
     console.log(`✓ PDF parsed successfully`)
     console.log(`  - Pages: ${data.numpages}`)
     console.log(`  - Text length: ${data.text.length} characters`)
-    
+
     return data.text
   } catch (error) {
     console.error('Failed to parse PDF:', error)
@@ -62,32 +62,32 @@ function parseDPAText(text: string): ParsedSection[] {
   // Split by section headers - adjust regex based on actual PDF format
   // Common patterns: "Section 1.", "SEC. 1.", "SECTION 1", etc.
   const sectionPattern = /(?:SECTION|Section|SEC\.?)\s+(\d+[a-z]?)\.\s*([^\n]+)/gi
-  
+
   let matches = [...text.matchAll(sectionPattern)]
-  
+
   console.log(`  Found ${matches.length} potential sections`)
 
   for (let i = 0; i < matches.length; i++) {
     const match = matches[i]
     const nextMatch = matches[i + 1]
-    
+
     const sectionNum = match[1].trim()
     const title = cleanText(match[2] || 'Untitled Section')
-    
+
     // Extract content between this section and the next
     const startPos = match.index! + match[0].length
     const endPos = nextMatch ? nextMatch.index! : text.length
-    
+
     let content = text.slice(startPos, endPos).trim()
-    
+
     // Clean up the content
     content = cleanText(content)
-    
+
     // Remove page numbers, headers, footers (common patterns)
     content = content.replace(/Page \d+ of \d+/gi, '')
     content = content.replace(/\f/g, '') // Form feed characters
     content = content.replace(/\s{3,}/g, '\n\n') // Multiple spaces to paragraphs
-    
+
     // Only include sections with substantial content
     if (content.length > 50) {
       sections.push({
@@ -95,7 +95,7 @@ function parseDPAText(text: string): ParsedSection[] {
         title,
         content: content.slice(0, 10000), // Limit to 10KB per section
       })
-      
+
       console.log(`  ✓ Section ${sectionNum}: ${title.slice(0, 60)}...`)
     }
   }
@@ -132,6 +132,10 @@ async function ingestDPAFromPDF() {
       throw new Error('No sections found in PDF. The PDF format may need custom parsing.')
     }
 
+    // Calculate checksum
+    const fileBuffer = fs.readFileSync(PDF_PATH)
+    const checksum = calculateChecksum(fileBuffer)
+
     // Find or create the DPA document
     const dpaDoc = await prisma.legalDocument.upsert({
       where: { alias: 'DPA 2012' },
@@ -139,12 +143,16 @@ async function ingestDPAFromPDF() {
         title: 'Data Privacy Act of 2012',
         type: 'DPA',
         url: '/api/download/dpa-irr/dpa-2012.pdf',
+        checksum,
+        lastSync: new Date(),
       },
       create: {
         title: 'Data Privacy Act of 2012',
         alias: 'DPA 2012',
         type: 'DPA',
         url: '/api/download/dpa-irr/dpa-2012.pdf',
+        checksum,
+        lastSync: new Date(),
       },
     })
 

@@ -181,6 +181,17 @@ export async function invalidateCacheAfterIngestion(): Promise<void> {
   console.log('✅ Search cache cleared')
 }
 
+import * as crypto from 'crypto'
+
+/**
+ * Calculate SHA-256 checksum of a file or buffer
+ */
+export function calculateChecksum(data: Buffer | string): string {
+  const hash = crypto.createHash('sha256')
+  hash.update(data)
+  return hash.digest('hex')
+}
+
 /**
  * Example: Create a legal document record
  */
@@ -189,9 +200,14 @@ export async function createDocument(data: {
   title: string
   alias: string
   url?: string
+  checksum?: string
+  lastSync?: Date
 }) {
   return prisma.legalDocument.create({
-    data,
+    data: {
+      ...data,
+      lastSync: data.lastSync || new Date(),
+    },
   })
 }
 

@@ -19,6 +19,8 @@ export async function GET(
             type: true,
             subType: true,
             url: true,
+            checksum: true,
+            lastSync: true,
           },
         },
         tags: {

@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import { cacheService } from '../lib/redis'
-import { createIngestionLog, completeIngestionLog, autoTagSection, cleanText, createSectionWithEmbedding } from './ingestion-utils'
+import { createIngestionLog, completeIngestionLog, autoTagSection, cleanText, createSectionWithEmbedding, calculateChecksum } from './ingestion-utils'
 import * as fs from 'fs'
 import * as path from 'path'
 import pdfParse from 'pdf-parse'
@@ -144,6 +144,10 @@ async function ingestCirculars() {
         const text = await extractTextFromPDF(filePath)
         const parsed = await parseCircularPDF(text, filename)
 
+        // Calculate checksum
+        const fileBuffer = fs.readFileSync(filePath)
+        const checksum = calculateChecksum(fileBuffer)
+
         // Create document alias from filename
         const alias = filename.replace(/\.pdf$/i, '').replace(/[_-]/g, ' ')
 
@@ -155,6 +159,8 @@ async function ingestCirculars() {
             type: 'ISSUANCE',
             subType: 'CIRCULAR',
             url: `/api/download/issuances/circulars/${filename}`,
+            checksum,
+            lastSync: new Date(),
           },
           create: {
             title: parsed.title,
@@ -162,6 +168,8 @@ async function ingestCirculars() {
             type: 'ISSUANCE',
             subType: 'CIRCULAR',
             url: `/api/download/issuances/circulars/${filename}`,
+            checksum,
+            lastSync: new Date(),
           },
         })
 
